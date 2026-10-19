@@ -70,8 +70,8 @@ class _SecretScreenState extends State<SecretScreen> {
   bool _isValidating = false;
 
   // ⚠️ SUBSTITUA pela URL real do seu site
-  static const String _validateUrl = 'https://SEU-SITE.com/api/keys/validate';
-  static const String _productName = 'MultiKit';
+  static const String _validateUrl = 'https://key-manager-fawn.vercel.app/api/keys/validate';
+  static const String _productName = 'FelpzXit';
 
   // ---------------------------------------------------------------
   // 1) Gatilho: 2 toques de 3 dedos
