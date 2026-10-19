@@ -198,9 +198,16 @@ class _SecretScreenState extends State<SecretScreen> {
         _message('Permita a exibição sobre outros aplicativos.');
         return;
       }
+      // Abre o Free Fire global antes de mostrar o painel por cima do jogo.
+      try {
+        await _shizuku.runCommand('monkey -p com.dts.freefireth 1');
+        await Future.delayed(const Duration(milliseconds: 900));
+      } catch (e) {
+        debugPrint('Não foi possível iniciar o Free Fire automaticamente: $e');
+      }
       await FlutterOverlayWindowPlus.showOverlay(
-        height: 400,
-        width: 300,
+        height: 600,
+        width: 420,
         alignment: OverlayAlignment.center,
         enableDrag: true,
         flag: OverlayFlag.defaultFlag,
@@ -295,7 +302,11 @@ class OverlayPanel extends StatefulWidget {
 
 class _OverlayPanelState extends State<OverlayPanel> {
   bool _indicator = false, _focus = false, _settings = false;
+  bool _minimized = false, _expandAfterRelease = false, _gestureCounted = false;
   double _scale = 1;
+  int _page = 0, _twoFingerTaps = 0;
+  DateTime? _lastTwoFingerTap;
+  final Set<int> _activePointers = <int>{};
   String _status = 'Pronto';
 
   Future<void> _send(String name, dynamic value) async {
@@ -316,6 +327,65 @@ class _OverlayPanelState extends State<OverlayPanel> {
     if (mounted) setState(() => _status = 'Controles redefinidos');
   }
 
+  Future<void> _minimizePanel() async {
+    setState(() {
+      _minimized = true;
+      _twoFingerTaps = 0;
+      _lastTwoFingerTap = null;
+    });
+    try {
+      await FlutterOverlayWindowPlus.resizeOverlay(90, 90);
+    } catch (e) {
+      debugPrint('Não foi possível reduzir o painel: $e');
+      if (mounted) setState(() => _minimized = false);
+    }
+  }
+
+  Future<void> _restorePanel() async {
+    setState(() {
+      _minimized = false;
+      _twoFingerTaps = 0;
+      _lastTwoFingerTap = null;
+      _activePointers.clear();
+      _gestureCounted = false;
+      _expandAfterRelease = false;
+    });
+    try {
+      await FlutterOverlayWindowPlus.resizeOverlay(420, 600);
+    } catch (e) {
+      debugPrint('Não foi possível restaurar o painel: $e');
+    }
+  }
+
+  void _onPointerDown(PointerDownEvent event) {
+    if (!_minimized) return;
+    _activePointers.add(event.pointer);
+    if (_activePointers.length >= 2 && !_gestureCounted) {
+      _gestureCounted = true;
+      final now = DateTime.now();
+      if (_lastTwoFingerTap == null ||
+          now.difference(_lastTwoFingerTap!) > const Duration(milliseconds: 1800)) {
+        _twoFingerTaps = 1;
+      } else {
+        _twoFingerTaps++;
+      }
+      _lastTwoFingerTap = now;
+      if (_twoFingerTaps >= 2) _expandAfterRelease = true;
+    }
+  }
+
+  void _onPointerEnd(PointerEvent event) {
+    if (!_minimized) return;
+    _activePointers.remove(event.pointer);
+    if (_activePointers.isEmpty) {
+      _gestureCounted = false;
+      if (_expandAfterRelease) {
+        _expandAfterRelease = false;
+        _restorePanel();
+      }
+    }
+  }
+
   BoxDecoration get _card => BoxDecoration(
     color: panel, borderRadius: BorderRadius.circular(14),
     border: Border.all(color: const Color(0xFF302A3D)),
@@ -323,104 +393,242 @@ class _OverlayPanelState extends State<OverlayPanel> {
 
   Widget _toggle(IconData icon, String title, String subtitle, bool value, ValueChanged<bool> changed) =>
     Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: _card,
       child: Row(children: [
-        Icon(icon, color: neon, size: 21),
-        const SizedBox(width: 9),
+        Icon(icon, color: neon, size: 23),
+        const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-          Text(subtitle, style: const TextStyle(color: muted, fontSize: 10)),
+          const SizedBox(height: 3),
+          Text(subtitle, style: const TextStyle(color: muted, fontSize: 11)),
         ])),
         Switch.adaptive(value: value, onChanged: changed),
       ]),
     );
 
-  @override
-  Widget build(BuildContext context) => Material(
-    color: Colors.transparent,
-    child: Container(
-      decoration: BoxDecoration(
-        color: bg, borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: neon, width: 1.4),
-        boxShadow: [BoxShadow(color: neon.withValues(alpha: 0.16), blurRadius: 18)],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(children: [
-        Container(
-          padding: const EdgeInsets.fromLTRB(12, 7, 4, 7),
-          decoration: const BoxDecoration(
-            color: Color(0xFF171321),
-            border: Border(bottom: BorderSide(color: Color(0xFF342641))),
+  Widget _navItem(int index, IconData icon, String label) {
+    final selected = _page == index;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Material(
+        color: selected ? neon.withValues(alpha: 0.17) : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => setState(() => _page = index),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 13),
+            child: Column(children: [
+              Icon(icon, color: selected ? neon : muted, size: 22),
+              const SizedBox(height: 6),
+              Text(label, textAlign: TextAlign.center,
+                style: TextStyle(color: selected ? Colors.white : muted, fontSize: 10,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500)),
+            ]),
           ),
-          child: Row(children: [
-            const Icon(Icons.bolt_rounded, color: neon),
-            const SizedBox(width: 6),
-            const Expanded(child: Text('Felpz Xit',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
-            IconButton(
-              tooltip: 'Configurações', visualDensity: VisualDensity.compact,
-              onPressed: () => setState(() => _settings = !_settings),
-              icon: const Icon(Icons.settings_rounded, size: 20),
-            ),
-            IconButton(
-              tooltip: 'Fechar painel', visualDensity: VisualDensity.compact,
-              onPressed: () async {
-                try { await FlutterOverlayWindowPlus.closeOverlay(); }
-                catch (e) { debugPrint('Erro ao fechar overlay: $e'); }
-              },
-              icon: const Icon(Icons.close_rounded, size: 22),
-            ),
-          ]),
         ),
-        Expanded(child: ListView(
-          padding: const EdgeInsets.all(11),
-          children: [
-            const Text('CONTROLES', style: TextStyle(
-              color: muted, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.4)),
-            const SizedBox(height: 8),
-            _toggle(Icons.radio_button_checked_rounded, 'Indicador visual', 'Alternar indicador', _indicator, (v) {
-              setState(() => _indicator = v); _send('indicator', v);
-            }),
-            const SizedBox(height: 8),
-            _toggle(Icons.center_focus_strong_rounded, 'Modo foco', 'Controle visual de foco', _focus, (v) {
-              setState(() => _focus = v); _send('focusMode', v);
-            }),
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.all(11), decoration: _card,
-              child: Column(children: [
-                Row(children: [
-                  const Icon(Icons.tune_rounded, color: neon, size: 19),
-                  const SizedBox(width: 7),
-                  const Expanded(child: Text('Escala de visualização',
-                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12))),
-                  Text((_scale * 100).round().toString() + '%', style: const TextStyle(color: neon)),
-                ]),
-                Slider(value: _scale, min: 0.5, max: 1.5, divisions: 10, onChanged: (v) {
-                  setState(() => _scale = v); _send('viewScale', v);
-                }),
-              ]),
+      ),
+    );
+  }
+
+  Widget _homePage() => ListView(
+    padding: const EdgeInsets.all(18),
+    children: [
+      const Text('Bem-vindo ao Felpz Xit',
+        style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800)),
+      const SizedBox(height: 6),
+      const Text('Acesse os controles pelo menu lateral.',
+        style: TextStyle(color: muted, fontSize: 13)),
+      const SizedBox(height: 20),
+      Container(
+        padding: const EdgeInsets.all(16),
+        decoration: _card,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Row(children: [
+            Icon(Icons.dashboard_customize_rounded, color: neon, size: 22),
+            SizedBox(width: 9),
+            Text('Resumo do painel', style: TextStyle(fontWeight: FontWeight.w700)),
+          ]),
+          const SizedBox(height: 16),
+          _summaryRow(Icons.radio_button_checked_rounded, 'Indicador visual', _indicator ? 'Ativado' : 'Desativado'),
+          const SizedBox(height: 12),
+          _summaryRow(Icons.center_focus_strong_rounded, 'Modo foco', _focus ? 'Ativado' : 'Desativado'),
+          const SizedBox(height: 12),
+          _summaryRow(Icons.tune_rounded, 'Escala', '${(_scale * 100).round()}%'),
+        ]),
+      ),
+      const SizedBox(height: 14),
+      FilledButton.icon(
+        onPressed: () => setState(() => _page = 1),
+        icon: const Icon(Icons.tune_rounded),
+        label: const Text('Abrir controles'),
+      ),
+      const SizedBox(height: 10),
+      Text(_status, style: const TextStyle(color: muted, fontSize: 11)),
+    ],
+  );
+
+  Widget _summaryRow(IconData icon, String label, String value) => Row(children: [
+    Icon(icon, size: 18, color: muted),
+    const SizedBox(width: 9),
+    Expanded(child: Text(label, style: const TextStyle(fontSize: 12))),
+    Text(value, style: const TextStyle(color: neon, fontWeight: FontWeight.w700, fontSize: 12)),
+  ]);
+
+  Widget _controlsPage() => ListView(
+    padding: const EdgeInsets.all(16),
+    children: [
+      const Text('Controles', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800)),
+      const SizedBox(height: 5),
+      const Text('Ative ou ajuste os controles visuais.',
+        style: TextStyle(color: muted, fontSize: 12)),
+      const SizedBox(height: 18),
+      _toggle(Icons.radio_button_checked_rounded, 'Indicador visual', 'Alternar indicador', _indicator, (v) {
+        setState(() => _indicator = v); _send('indicator', v);
+      }),
+      const SizedBox(height: 10),
+      _toggle(Icons.center_focus_strong_rounded, 'Modo foco', 'Controle visual de foco', _focus, (v) {
+        setState(() => _focus = v); _send('focusMode', v);
+      }),
+      const SizedBox(height: 10),
+      Container(
+        padding: const EdgeInsets.all(14), decoration: _card,
+        child: Column(children: [
+          Row(children: [
+            const Icon(Icons.tune_rounded, color: neon, size: 20),
+            const SizedBox(width: 9),
+            const Expanded(child: Text('Escala de visualização',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
+            Text('${(_scale * 100).round()}%', style: const TextStyle(color: neon, fontWeight: FontWeight.bold)),
+          ]),
+          Slider(value: _scale, min: 0.5, max: 1.5, divisions: 10, onChanged: (v) {
+            setState(() => _scale = v); _send('viewScale', v);
+          }),
+        ]),
+      ),
+      const SizedBox(height: 12),
+      OutlinedButton.icon(onPressed: _reset,
+        icon: const Icon(Icons.restart_alt_rounded), label: const Text('Redefinir controles')),
+      const SizedBox(height: 8),
+      Text(_status, textAlign: TextAlign.center,
+        style: const TextStyle(color: muted, fontSize: 11)),
+    ],
+  );
+
+  Widget _settingsPage() => ListView(
+    padding: const EdgeInsets.all(16),
+    children: [
+      const Text('Configurações', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800)),
+      const SizedBox(height: 6),
+      const Text('Preferências do painel flutuante.',
+        style: TextStyle(color: muted, fontSize: 12)),
+      const SizedBox(height: 18),
+      Container(
+        padding: const EdgeInsets.all(14), decoration: _card,
+        child: const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(Icons.gesture_rounded, color: neon),
+          SizedBox(width: 10),
+          Expanded(child: Text('Use o botão de minimizar para recolher o painel. No ícone reduzido, faça dois toques simultâneos com dois dedos para reabrir.',
+            style: TextStyle(color: muted, fontSize: 12, height: 1.4))),
+        ]),
+      ),
+      const SizedBox(height: 12),
+      OutlinedButton.icon(onPressed: _reset,
+        icon: const Icon(Icons.restart_alt_rounded), label: const Text('Redefinir controles')),
+      const SizedBox(height: 8),
+      Text(_status, textAlign: TextAlign.center,
+        style: const TextStyle(color: muted, fontSize: 11)),
+    ],
+  );
+
+  Widget _minimizedBubble() => Center(
+    child: Container(
+      width: 78, height: 78,
+      decoration: BoxDecoration(
+        color: const Color(0xFF171321),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: neon, width: 2),
+        boxShadow: [BoxShadow(color: neon.withValues(alpha: 0.25), blurRadius: 16)],
+      ),
+      child: const Center(child: Icon(Icons.bolt_rounded, color: neon, size: 36)),
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) => Listener(
+    behavior: HitTestBehavior.opaque,
+    onPointerDown: _minimized ? _onPointerDown : null,
+    onPointerUp: _minimized ? _onPointerEnd : null,
+    onPointerCancel: _minimized ? _onPointerEnd : null,
+    child: Material(
+      color: Colors.transparent,
+      child: _minimized
+        ? _minimizedBubble()
+        : Container(
+            decoration: BoxDecoration(
+              color: bg, borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: neon, width: 1.4),
+              boxShadow: [BoxShadow(color: neon.withValues(alpha: 0.18), blurRadius: 20)],
             ),
-            if (_settings) ...[
-              const SizedBox(height: 10),
+            clipBehavior: Clip.antiAlias,
+            child: Row(children: [
               Container(
-                padding: const EdgeInsets.all(11), decoration: _card,
-                child: const Text(
-                  'Os controles enviam estados permitidos para /data/local/tmp/felpz_cmd.json via Shizuku.',
-                  style: TextStyle(color: muted, fontSize: 11),
-                ),
+                width: 92,
+                color: const Color(0xFF111018),
+                child: Column(children: [
+                  const SizedBox(height: 17),
+                  Container(
+                    width: 42, height: 42,
+                    decoration: BoxDecoration(
+                      color: neon.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(13),
+                      border: Border.all(color: neon.withValues(alpha: 0.65)),
+                    ),
+                    child: const Icon(Icons.bolt_rounded, color: neon, size: 27),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('FELPZ', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.1)),
+                  const SizedBox(height: 22),
+                  _navItem(0, Icons.home_rounded, 'Início'),
+                  _navItem(1, Icons.tune_rounded, 'Controles'),
+                  _navItem(2, Icons.settings_rounded, 'Ajustes'),
+                  const Spacer(),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Icon(Icons.circle, size: 8, color: _status == 'Falha ao enviar estado' ? Colors.redAccent : Colors.greenAccent),
+                  ),
+                ]),
               ),
-            ],
-            const SizedBox(height: 10),
-            OutlinedButton.icon(onPressed: _reset,
-              icon: const Icon(Icons.restart_alt_rounded), label: const Text('Redefinir controles')),
-            const SizedBox(height: 5),
-            Text(_status, textAlign: TextAlign.center,
-              style: const TextStyle(color: muted, fontSize: 10)),
-          ],
-        )),
-      ]),
+              Expanded(
+                child: Column(children: [
+                  Container(
+                    height: 58,
+                    padding: const EdgeInsets.symmetric(horizontal: 15),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF171321),
+                      border: Border(bottom: BorderSide(color: Color(0xFF342641))),
+                    ),
+                    child: Row(children: [
+                      Expanded(child: Text(
+                        ['Visão geral', 'Controles', 'Configurações'][_page],
+                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                      )),
+                      IconButton(
+                        tooltip: 'Minimizar painel',
+                        onPressed: _minimizePanel,
+                        icon: const Icon(Icons.remove_rounded, size: 23),
+                      ),
+                    ]),
+                  ),
+                  Expanded(child: IndexedStack(
+                    index: _page,
+                    children: [_homePage(), _controlsPage(), _settingsPage()],
+                  )),
+                ]),
+              ),
+            ]),
+          ),
     ),
   );
 }
