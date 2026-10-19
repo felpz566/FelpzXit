@@ -6,7 +6,7 @@ import 'package:flutter_overlay_window_plus/flutter_overlay_window_plus.dart';
 import 'package:http/http.dart' as http;
 import 'package:shizuku_api_plugin/shizuku_api.dart';
 
-const bg = Color(0xFF0B0B12);
+const bg = Colors.black;
 const panel = Color(0xFF171522);
 const neon = Color(0xFFB36BFF);
 const muted = Color(0xFF9694A8);
@@ -106,34 +106,62 @@ class _SecretScreenState extends State<SecretScreen> {
       _message('Digite sua key.');
       return;
     }
+
     setState(() => _busy = true);
     try {
       final response = await http.post(
         _endpoint,
-        headers: const {'Content-Type': 'application/json'},
+        headers: const {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
         body: jsonEncode({'key': key, 'product': 'MultiKit'}),
       ).timeout(const Duration(seconds: 15));
-      final decoded = jsonDecode(response.body);
-      if (decoded is! Map<String, dynamic>) {
-        throw const FormatException('Resposta inesperada do servidor.');
+
+      dynamic decoded;
+      try {
+        decoded = jsonDecode(response.body);
+      } on FormatException {
+        debugPrint('Validação HTTP ${response.statusCode}: resposta não JSON: ${response.body}');
+        _message('Erro no servidor de validação (HTTP ${response.statusCode}).');
+        return;
       }
-      if (response.statusCode == 200 && decoded['valid'] == true) {
+
+      if (decoded is! Map) {
+        debugPrint('Validação HTTP ${response.statusCode}: resposta inesperada: ${response.body}');
+        _message('Resposta inesperada do servidor (HTTP ${response.statusCode}).');
+        return;
+      }
+
+      if (response.statusCode >= 500) {
+        final detail = decoded['message'] ?? decoded['error'];
+        debugPrint('Erro do servidor HTTP ${response.statusCode}: $detail');
+        _message('Servidor com erro (HTTP ${response.statusCode}). Tente novamente mais tarde.');
+        return;
+      }
+
+      final valid = decoded['valid'] == true || decoded['success'] == true;
+      if (response.statusCode >= 200 && response.statusCode < 300 && valid) {
         await _openOverlay();
-      } else {
-        final error = decoded['error'] ?? decoded['status'];
-        _message(switch (error) {
-          'expired' => 'Key expirada.',
-          'revoked' => 'Key revogada.',
-          'wrong_product' => 'Key pertence a outro produto.',
-          _ => 'Key inválida.',
-        });
+        return;
       }
+
+      final error = (decoded['error'] ?? decoded['status'] ?? decoded['message'] ?? '').toString().toLowerCase();
+      _message(switch (error) {
+        'expired' => 'Key expirada.',
+        'revoked' => 'Key revogada.',
+        'wrong_product' => 'Key pertence a outro produto.',
+        'invalid_key' || 'invalid' => 'Key inválida.',
+        _ when response.statusCode == 404 => 'Rota de validação não encontrada (HTTP 404).',
+        _ when response.statusCode == 401 || response.statusCode == 403 => 'Key recusada pelo servidor (HTTP ${response.statusCode}).',
+        _ when response.statusCode >= 400 => 'Falha ao validar a key (HTTP ${response.statusCode}).',
+        _ => 'Key não validada pelo servidor.',
+      });
     } on TimeoutException {
       _message('Tempo limite ao validar a key. Tente novamente.');
-    } on FormatException {
-      _message('O servidor retornou uma resposta inválida.');
-    } catch (e) {
-      _message('Falha na validação: $e');
+    } catch (e, stack) {
+      debugPrint('Falha na validação: $e\n$stack');
+      _message('Não foi possível conectar ao servidor de validação.');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -231,14 +259,16 @@ class _SecretScreenState extends State<SecretScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    body: SafeArea(child: GestureDetector(
+    backgroundColor: Colors.black,
+    body: GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: _showKey ? null : _tap,
-      child: Center(child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 220),
-        child: _showKey ? _keyForm() : _secretScreen(),
-      )),
-    )),
+      child: SizedBox.expand(
+        child: _showKey
+          ? SafeArea(child: Center(child: _keyForm()))
+          : const ColoredBox(color: Colors.black),
+      ),
+    ),
   );
 }
 
