@@ -33,6 +33,27 @@ class MyApp extends StatelessWidget {
   }
 }
 
+class OverlayPanel extends StatelessWidget {
+  const OverlayPanel({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      backgroundColor: Colors.black,
+      body: Center(
+        child: Text(
+          'Felpz Xit',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class SecretScreen extends StatefulWidget {
   const SecretScreen({super.key});
 
