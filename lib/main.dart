@@ -255,7 +255,7 @@ class _OverlayPanelState extends State<OverlayPanel> {
 
   Future<void> _send(String name, dynamic value) async {
     try {
-      await FlutterOverlayWindowPlus.shareData({'name': name, 'value': value});
+      await FlutterOverlayWindowPlus.shareData(jsonEncode({'name': name, 'value': value}));
       if (mounted) setState(() => _status = 'Estado enviado');
     } catch (e) {
       if (mounted) setState(() => _status = 'Falha ao enviar estado');
@@ -321,7 +321,7 @@ class _OverlayPanelState extends State<OverlayPanel> {
             IconButton(
               tooltip: 'Fechar painel', visualDensity: VisualDensity.compact,
               onPressed: () async {
-                try { await FlutterOverlayWindowPlus.hideOverlay(); }
+                try { await FlutterOverlayWindowPlus.closeOverlay(); }
                 catch (e) { debugPrint('Erro ao fechar overlay: $e'); }
               },
               icon: const Icon(Icons.close_rounded, size: 22),
