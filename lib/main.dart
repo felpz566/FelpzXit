@@ -325,7 +325,6 @@ class OverlayPanel extends StatefulWidget {
 
 class _OverlayPanelState extends State<OverlayPanel> {
   bool _indicator = false, _focus = false;
-  bool _minimized = false, _expandAfterRelease = false, _gestureCounted = false;
   bool _espEnabled = false, _espLine = true, _espBox = true;
   bool _espHealth = true, _espName = true, _espDistance = true;
   bool _aimbotEnabled = false, _fovEnabled = false;
@@ -333,9 +332,6 @@ class _OverlayPanelState extends State<OverlayPanel> {
   OverlayPosition? _dragStart;
   Offset? _dragOrigin;
   double _scale = 1;
-  int _page = 0, _twoFingerTaps = 0;
-  DateTime? _lastTwoFingerTap;
-  final Set<int> _activePointers = <int>{};
   String _status = 'Pronto';
 
   Future<void> _send(String name, dynamic value) async {
@@ -359,36 +355,6 @@ class _OverlayPanelState extends State<OverlayPanel> {
     await _send('focusMode', false);
     await _send('viewScale', 1.0);
     if (mounted) setState(() => _status = 'Controles redefinidos');
-  }
-
-  Future<void> _minimizePanel() async {
-    setState(() {
-      _minimized = true;
-      _twoFingerTaps = 0;
-      _lastTwoFingerTap = null;
-    });
-    try {
-      await FlutterOverlayWindow.resizeOverlay(90, 90, false);
-    } catch (e) {
-      _recordAppLog('Não foi possível reduzir o painel: $e');
-      if (mounted) setState(() => _minimized = false);
-    }
-  }
-
-  Future<void> _restorePanel() async {
-    setState(() {
-      _minimized = false;
-      _twoFingerTaps = 0;
-      _lastTwoFingerTap = null;
-      _activePointers.clear();
-      _gestureCounted = false;
-      _expandAfterRelease = false;
-    });
-    try {
-      await FlutterOverlayWindow.resizeOverlay(600, 420, false);
-    } catch (e) {
-      _recordAppLog('Não foi possível restaurar o painel: $e');
-    }
   }
 
   Future<void> _startCustomDrag(DragStartDetails details) async {
@@ -416,35 +382,6 @@ class _OverlayPanelState extends State<OverlayPanel> {
   void _endCustomDrag(DragEndDetails details) {
     _dragStart = null;
     _dragOrigin = null;
-  }
-
-  void _onPointerDown(PointerDownEvent event) {
-    if (!_minimized) return;
-    _activePointers.add(event.pointer);
-    if (_activePointers.length >= 3 && !_gestureCounted) {
-      _gestureCounted = true;
-      final now = DateTime.now();
-      if (_lastTwoFingerTap == null ||
-          now.difference(_lastTwoFingerTap!) > const Duration(milliseconds: 1800)) {
-        _twoFingerTaps = 1;
-      } else {
-        _twoFingerTaps++;
-      }
-      _lastTwoFingerTap = now;
-      if (_twoFingerTaps >= 2) _expandAfterRelease = true;
-    }
-  }
-
-  void _onPointerEnd(PointerEvent event) {
-    if (!_minimized) return;
-    _activePointers.remove(event.pointer);
-    if (_activePointers.isEmpty) {
-      _gestureCounted = false;
-      if (_expandAfterRelease) {
-        _expandAfterRelease = false;
-        _restorePanel();
-      }
-    }
   }
 
   BoxDecoration get _card => BoxDecoration(
@@ -622,40 +559,6 @@ class _OverlayPanelState extends State<OverlayPanel> {
     ],
   );
 
-  Future<void> _clearAppLogs() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: panel,
-        title: const Text('Limpar logs do aplicativo?'),
-        content: const Text(
-          'Isso apaga o arquivo de logs privado do Felpz Xit. '
-          'Não apaga registros do Android nem de outros aplicativos.',
-          style: TextStyle(color: muted, height: 1.4),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Limpar logs'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    try {
-      final file = await _appLogFile();
-      if (await file.exists()) await file.delete();
-      if (mounted) setState(() => _status = 'Logs do aplicativo apagados');
-    } catch (e) {
-      _recordAppLog('Falha ao limpar logs internos: $e');
-      if (mounted) setState(() => _status = 'Não foi possível limpar os logs');
-    }
-  }
-
   Future<void> _closePanel() async {
     try {
       await FlutterOverlayWindow.closeOverlay();
@@ -665,131 +568,40 @@ class _OverlayPanelState extends State<OverlayPanel> {
     }
   }
 
-  Widget _settingsPage() => ListView(
-    padding: const EdgeInsets.all(16),
-    children: [
-      const Text('Configurações', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800)),
-      const SizedBox(height: 6),
-      const Text('Preferências do painel flutuante.',
-        style: TextStyle(color: muted, fontSize: 12)),
-      const SizedBox(height: 18),
-      Container(
-        padding: const EdgeInsets.all(14), decoration: _card,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Row(children: [
-            Icon(Icons.cleaning_services_rounded, color: neon),
-            SizedBox(width: 10),
-            Expanded(child: Text('Bypass', style: TextStyle(fontWeight: FontWeight.w700))),
-          ]),
-          const SizedBox(height: 6),
-          const Text(
-            'Apaga somente o arquivo de logs interno do Felpz Xit.',
-            style: TextStyle(color: muted, fontSize: 12, height: 1.4),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: _clearAppLogs,
-              icon: const Icon(Icons.delete_sweep_outlined),
-              label: const Text('Limpar logs do aplicativo'),
-            ),
-          ),
-        ]),
-      ),
-      const SizedBox(height: 12),
-      Container(
-        padding: const EdgeInsets.all(14), decoration: _card,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Row(children: [
-            Icon(Icons.close_rounded, color: neon),
-            SizedBox(width: 10),
-            Expanded(child: Text('Fechar painel', style: TextStyle(fontWeight: FontWeight.w700))),
-          ]),
-          const SizedBox(height: 6),
-          const Text(
-            'Encerra o painel flutuante. Para abri-lo novamente, entre no aplicativo e valide sua key.',
-            style: TextStyle(color: muted, fontSize: 12, height: 1.4),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: _closePanel,
-              icon: const Icon(Icons.power_settings_new_rounded),
-              label: const Text('Fechar painel'),
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF8E3C55),
-                foregroundColor: Colors.white,
-              ),
-            ),
-          ),
-        ]),
-      ),
-      const SizedBox(height: 12),
-      OutlinedButton.icon(onPressed: _reset,
-        icon: const Icon(Icons.restart_alt_rounded), label: const Text('Redefinir controles')),
-      const SizedBox(height: 8),
-      Text(_status, textAlign: TextAlign.center,
-        style: const TextStyle(color: muted, fontSize: 11)),
-    ],
-  );
-
-  Widget _minimizedBubble() => Center(
-    child: GestureDetector(
-      onPanStart: _startCustomDrag,
-      onPanUpdate: _updateCustomDrag,
-      onPanEnd: _endCustomDrag,
-      child: Container(
-        width: 78, height: 78,
-        decoration: BoxDecoration(color: const Color(0xFF171321), borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: neon, width: 2), boxShadow: [BoxShadow(color: neon.withValues(alpha: 0.25), blurRadius: 16)]),
-        child: const Center(child: Icon(Icons.bolt_rounded, color: neon, size: 36)),
-      ),
-    ),
-  );
-
   @override
-  Widget build(BuildContext context) => Listener(
-    behavior: HitTestBehavior.opaque,
-    onPointerDown: _minimized ? _onPointerDown : null,
-    onPointerUp: _minimized ? _onPointerEnd : null,
-    onPointerCancel: _minimized ? _onPointerEnd : null,
-    child: Material(
-      color: Colors.transparent,
-      child: _minimized ? _minimizedBubble() : Container(
-        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: neon, width: 1.4), boxShadow: [BoxShadow(color: neon.withValues(alpha: 0.18), blurRadius: 20)]),
-        clipBehavior: Clip.antiAlias,
-        child: Column(children: [
-          GestureDetector(
-            onPanStart: _startCustomDrag, onPanUpdate: _updateCustomDrag, onPanEnd: _endCustomDrag,
-            child: Container(
-              height: 46, padding: const EdgeInsets.symmetric(horizontal: 14),
-              decoration: const BoxDecoration(color: Color(0xFF171321), border: Border(bottom: BorderSide(color: Color(0xFF342641)))),
-              child: Row(children: [
-                const Icon(Icons.drag_indicator_rounded, color: muted, size: 20), const SizedBox(width: 8),
-                const Icon(Icons.bolt_rounded, color: neon, size: 22), const SizedBox(width: 8),
-                const Expanded(child: Text('FELPZ XIT', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, letterSpacing: 0.8))),
-                Icon(Icons.circle, size: 8, color: _status == 'Falha ao enviar estado' ? Colors.redAccent : Colors.greenAccent),
-                const SizedBox(width: 8),
-                IconButton(tooltip: 'Minimizar painel', onPressed: _minimizePanel, icon: const Icon(Icons.remove_rounded, size: 22), visualDensity: VisualDensity.compact),
-              ]),
-            ),
-          ),
-          SizedBox(height: 48, child: SingleChildScrollView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 6),
+  Widget build(BuildContext context) => Material(
+    color: Colors.transparent,
+    child: Container(
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: neon, width: 1.4), boxShadow: [BoxShadow(color: neon.withValues(alpha: 0.18), blurRadius: 20)]),
+      clipBehavior: Clip.antiAlias,
+      child: Column(children: [
+        GestureDetector(
+          onPanStart: _startCustomDrag, onPanUpdate: _updateCustomDrag, onPanEnd: _endCustomDrag,
+          child: Container(
+            height: 46, padding: const EdgeInsets.symmetric(horizontal: 14),
+            decoration: const BoxDecoration(color: Color(0xFF171321), border: Border(bottom: BorderSide(color: Color(0xFF342641)))),
             child: Row(children: [
-              _navItem(0, Icons.home_rounded, 'Início'),
-              _navItem(1, Icons.tune_rounded, 'Controles'),
-              _navItem(2, Icons.visibility_rounded, 'ESP'),
-              _navItem(3, Icons.my_location_rounded, 'Aimbot'),
-              _navItem(4, Icons.settings_rounded, 'Ajustes'),
+              const Icon(Icons.drag_indicator_rounded, color: muted, size: 20), const SizedBox(width: 8),
+              const Icon(Icons.bolt_rounded, color: neon, size: 22), const SizedBox(width: 8),
+              const Expanded(child: Text('FELPZ XIT', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, letterSpacing: 0.8))),
+              Icon(Icons.circle, size: 8, color: _status == 'Falha ao enviar estado' ? Colors.redAccent : Colors.greenAccent),
+              const SizedBox(width: 8),
+              IconButton(tooltip: 'Fechar painel', onPressed: _closePanel, icon: const Icon(Icons.close_rounded, size: 22), visualDensity: VisualDensity.compact),
             ]),
-          )),
-          const Divider(height: 1, color: Color(0xFF342641)),
-          Expanded(child: IndexedStack(index: _page, children: [_homePage(), _controlsPage(), _espPage(), _aimbotPage(), _settingsPage()])),
-        ]),
-      ),
+          ),
+        ),
+        SizedBox(height: 48, child: SingleChildScrollView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: Row(children: [
+            _navItem(0, Icons.home_rounded, 'Início'),
+            _navItem(1, Icons.tune_rounded, 'Controles'),
+            _navItem(2, Icons.visibility_rounded, 'ESP'),
+            _navItem(3, Icons.my_location_rounded, 'Aimbot'),
+          ]),
+        )),
+        const Divider(height: 1, color: Color(0xFF342641)),
+        Expanded(child: IndexedStack(index: _page.clamp(0, 3), children: [_homePage(), _controlsPage(), _espPage(), _aimbotPage()])),
+      ]),
     ),
   );
 }
