@@ -21,7 +21,7 @@ Future<File> _appLogFile() async {
 }
 
 Future<void> _recordAppLog(Object message) async {
-  final line = '${DateTime.now().toIso8601String()} $message\\n';
+  final line = '${DateTime.now().toIso8601String()} $message\n';
   try {
     final file = await _appLogFile();
     await file.writeAsString(line, mode: FileMode.append, flush: true);
@@ -356,7 +356,11 @@ class _OverlayPanelState extends State<OverlayPanel> {
       _lastTwoFingerTap = null;
     });
     try {
-      await FlutterOverlayWindow.resizeOverlay(90, 90);
+      await FlutterOverlayWindow.resizeOverlay(
+        width: 90,
+        height: 90,
+        alignment: Alignment.center,
+      );
     } catch (e) {
       _recordAppLog('Não foi possível reduzir o painel: $e');
       if (mounted) setState(() => _minimized = false);
@@ -373,7 +377,11 @@ class _OverlayPanelState extends State<OverlayPanel> {
       _expandAfterRelease = false;
     });
     try {
-      await FlutterOverlayWindow.resizeOverlay(420, 600);
+      await FlutterOverlayWindow.resizeOverlay(
+        width: 420,
+        height: 600,
+        alignment: Alignment.center,
+      );
     } catch (e) {
       _recordAppLog('Não foi possível restaurar o painel: $e');
     }
