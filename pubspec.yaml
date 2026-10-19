@@ -13,7 +13,7 @@ dependencies:
   path_provider: ^2.1.5
   permission_handler: ^11.0.0
   shizuku_api_plugin: ^1.0.4
-  flutter_overlay_window_plus: ^1.0.1
+  flutter_overlay_window: ^1.0.0
 
 flutter:
   uses-material-design: true
