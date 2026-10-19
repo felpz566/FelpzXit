@@ -10,6 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   http: ^1.2.0
+  path_provider: ^2.1.5
   permission_handler: ^11.0.0
   shizuku_api_plugin: ^1.0.4
   flutter_overlay_window_plus: ^1.0.1
