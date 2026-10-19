@@ -42,7 +42,7 @@ class SecretScreen extends StatefulWidget {
 }
 
 class _SecretScreenState extends State<SecretScreen> {
-  static final _endpoint = Uri.parse('https://key-manager-fawn.vercel.app/api/validate');
+  static final _endpoint = Uri.parse('https://key-manager-fawn.vercel.app/api/keys/validate');
   final _key = TextEditingController();
   final _shizuku = ShizukuApi();
   StreamSubscription<dynamic>? _subscription;
