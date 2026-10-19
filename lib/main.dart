@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
+import 'package:flutter_overlay_window/src/models/overlay_position.dart';
 import 'package:http/http.dart' as http;
 import 'package:shizuku_api_plugin/shizuku_api.dart';
 
@@ -226,8 +227,8 @@ class _SecretScreenState extends State<SecretScreen> {
         _recordAppLog('Não foi possível iniciar o Free Fire automaticamente: $e');
       }
       await FlutterOverlayWindow.showOverlay(
-        height: 600,
-        width: 420,
+        height: 420,
+        width: 600,
         alignment: OverlayAlignment.center,
         overlayTitle: 'Felpz Xit',
         overlayContent: 'Painel flutuante ativo',
@@ -323,8 +324,14 @@ class OverlayPanel extends StatefulWidget {
 }
 
 class _OverlayPanelState extends State<OverlayPanel> {
-  bool _indicator = false, _focus = false, _settings = false;
+  bool _indicator = false, _focus = false;
   bool _minimized = false, _expandAfterRelease = false, _gestureCounted = false;
+  bool _espEnabled = false, _espLine = true, _espBox = true;
+  bool _espHealth = true, _espName = true, _espDistance = true;
+  bool _aimbotEnabled = false, _fovEnabled = false;
+  double _fovSize = 120;
+  OverlayPosition? _dragStart;
+  Offset? _dragOrigin;
   double _scale = 1;
   int _page = 0, _twoFingerTaps = 0;
   DateTime? _lastTwoFingerTap;
@@ -342,7 +349,12 @@ class _OverlayPanelState extends State<OverlayPanel> {
   }
 
   Future<void> _reset() async {
-    setState(() { _indicator = false; _focus = false; _scale = 1; });
+    setState(() {
+      _indicator = false; _focus = false; _scale = 1;
+      _espEnabled = false; _espLine = true; _espBox = true;
+      _espHealth = true; _espName = true; _espDistance = true;
+      _aimbotEnabled = false; _fovEnabled = false; _fovSize = 120;
+    });
     await _send('indicator', false);
     await _send('focusMode', false);
     await _send('viewScale', 1.0);
@@ -356,7 +368,7 @@ class _OverlayPanelState extends State<OverlayPanel> {
       _lastTwoFingerTap = null;
     });
     try {
-      await FlutterOverlayWindow.resizeOverlay(90, 90, true);
+      await FlutterOverlayWindow.resizeOverlay(90, 90, false);
     } catch (e) {
       _recordAppLog('Não foi possível reduzir o painel: $e');
       if (mounted) setState(() => _minimized = false);
@@ -373,10 +385,37 @@ class _OverlayPanelState extends State<OverlayPanel> {
       _expandAfterRelease = false;
     });
     try {
-      await FlutterOverlayWindow.resizeOverlay(420, 600, true);
+      await FlutterOverlayWindow.resizeOverlay(600, 420, false);
     } catch (e) {
       _recordAppLog('Não foi possível restaurar o painel: $e');
     }
+  }
+
+  Future<void> _startCustomDrag(DragStartDetails details) async {
+    _dragOrigin = details.globalPosition;
+    try {
+      _dragStart = await FlutterOverlayWindow.getOverlayPosition();
+    } catch (e) {
+      _recordAppLog('Não foi possível iniciar o arraste do painel: $e');
+    }
+  }
+
+  Future<void> _updateCustomDrag(DragUpdateDetails details) async {
+    final start = _dragStart;
+    final origin = _dragOrigin;
+    if (start == null || origin == null) return;
+    final dx = details.globalPosition.dx - origin.dx;
+    final dy = details.globalPosition.dy - origin.dy;
+    try {
+      await FlutterOverlayWindow.moveOverlay(OverlayPosition(start.x + dx, start.y + dy));
+    } catch (e) {
+      _recordAppLog('Falha ao mover painel: $e');
+    }
+  }
+
+  void _endCustomDrag(DragEndDetails details) {
+    _dragStart = null;
+    _dragOrigin = null;
   }
 
   void _onPointerDown(PointerDownEvent event) {
@@ -432,27 +471,72 @@ class _OverlayPanelState extends State<OverlayPanel> {
   Widget _navItem(int index, IconData icon, String label) {
     final selected = _page == index;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
       child: Material(
         color: selected ? neon.withValues(alpha: 0.17) : Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         child: InkWell(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(10),
           onTap: () => setState(() => _page = index),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 13),
-            child: Column(children: [
-              Icon(icon, color: selected ? neon : muted, size: 22),
-              const SizedBox(height: 6),
-              Text(label, textAlign: TextAlign.center,
-                style: TextStyle(color: selected ? Colors.white : muted, fontSize: 10,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500)),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(icon, color: selected ? neon : muted, size: 18),
+              const SizedBox(width: 7),
+              Text(label, style: TextStyle(color: selected ? Colors.white : muted, fontSize: 11,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500)),
             ]),
           ),
         ),
       ),
     );
   }
+
+  Widget _espPage() => ListView(
+    padding: const EdgeInsets.all(16),
+    children: [
+      const Text('ESP', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800)),
+      const SizedBox(height: 5),
+      const Text('Preferências visuais do painel. Estas opções ainda não estão ligadas ao jogo.', style: TextStyle(color: muted, fontSize: 12)),
+      const SizedBox(height: 16),
+      _toggle(Icons.visibility_rounded, 'Ativar ESP', 'Ativa as opções visuais abaixo', _espEnabled, (v) => setState(() => _espEnabled = v)),
+      const SizedBox(height: 10),
+      Opacity(opacity: _espEnabled ? 1 : 0.48, child: IgnorePointer(ignoring: !_espEnabled, child: Column(children: [
+        _toggle(Icons.show_chart_rounded, 'Linha', 'Linha indicadora', _espLine, (v) => setState(() => _espLine = v)),
+        const SizedBox(height: 8),
+        _toggle(Icons.crop_square_rounded, 'Caixa', 'Contorno de caixa', _espBox, (v) => setState(() => _espBox = v)),
+        const SizedBox(height: 8),
+        _toggle(Icons.favorite_border_rounded, 'Vida', 'Indicador de vida', _espHealth, (v) => setState(() => _espHealth = v)),
+        const SizedBox(height: 8),
+        _toggle(Icons.person_outline_rounded, 'Nome', 'Exibir nome', _espName, (v) => setState(() => _espName = v)),
+        const SizedBox(height: 8),
+        _toggle(Icons.social_distance_rounded, 'Distância', 'Exibir distância', _espDistance, (v) => setState(() => _espDistance = v)),
+      ]))),
+    ],
+  );
+
+  Widget _aimbotPage() => ListView(
+    padding: const EdgeInsets.all(16),
+    children: [
+      const Text('Aimbot', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800)),
+      const SizedBox(height: 5),
+      const Text('Controles de interface; não executam mira automática no jogo.', style: TextStyle(color: muted, fontSize: 12)),
+      const SizedBox(height: 16),
+      _toggle(Icons.my_location_rounded, 'Ativar aimbot', 'Alternar opção da interface', _aimbotEnabled, (v) => setState(() => _aimbotEnabled = v)),
+      const SizedBox(height: 10),
+      _toggle(Icons.circle_outlined, 'Ativar FOV', 'Mostrar prévia visual do campo de visão', _fovEnabled, (v) => setState(() => _fovEnabled = v)),
+      const SizedBox(height: 10),
+      Container(padding: const EdgeInsets.all(14), decoration: _card, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [const Icon(Icons.tune_rounded, color: neon, size: 20), const SizedBox(width: 9), const Expanded(child: Text('Tamanho do FOV', style: TextStyle(fontWeight: FontWeight.w600))), Text('${_fovSize.round()}', style: const TextStyle(color: neon, fontWeight: FontWeight.bold))]),
+        Slider(value: _fovSize, min: 30, max: 300, divisions: 27, onChanged: _fovEnabled ? (v) => setState(() => _fovSize = v) : null),
+        const SizedBox(height: 8),
+        Center(child: SizedBox(width: 150, height: 150, child: Center(child: Container(
+          width: 30 + (_fovSize / 300 * 120), height: 30 + (_fovSize / 300 * 120),
+          decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: _fovEnabled ? neon : muted, width: 1.5)),
+        )))),
+      ])),
+    ],
+  );
 
   Widget _homePage() => ListView(
     padding: const EdgeInsets.all(18),
@@ -652,15 +736,16 @@ class _OverlayPanelState extends State<OverlayPanel> {
   );
 
   Widget _minimizedBubble() => Center(
-    child: Container(
-      width: 78, height: 78,
-      decoration: BoxDecoration(
-        color: const Color(0xFF171321),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: neon, width: 2),
-        boxShadow: [BoxShadow(color: neon.withValues(alpha: 0.25), blurRadius: 16)],
+    child: GestureDetector(
+      onPanStart: _startCustomDrag,
+      onPanUpdate: _updateCustomDrag,
+      onPanEnd: _endCustomDrag,
+      child: Container(
+        width: 78, height: 78,
+        decoration: BoxDecoration(color: const Color(0xFF171321), borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: neon, width: 2), boxShadow: [BoxShadow(color: neon.withValues(alpha: 0.25), blurRadius: 16)]),
+        child: const Center(child: Icon(Icons.bolt_rounded, color: neon, size: 36)),
       ),
-      child: const Center(child: Icon(Icons.bolt_rounded, color: neon, size: 36)),
     ),
   );
 
@@ -672,72 +757,39 @@ class _OverlayPanelState extends State<OverlayPanel> {
     onPointerCancel: _minimized ? _onPointerEnd : null,
     child: Material(
       color: Colors.transparent,
-      child: _minimized
-        ? _minimizedBubble()
-        : Container(
-            decoration: BoxDecoration(
-              color: bg, borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: neon, width: 1.4),
-              boxShadow: [BoxShadow(color: neon.withValues(alpha: 0.18), blurRadius: 20)],
+      child: _minimized ? _minimizedBubble() : Container(
+        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: neon, width: 1.4), boxShadow: [BoxShadow(color: neon.withValues(alpha: 0.18), blurRadius: 20)]),
+        clipBehavior: Clip.antiAlias,
+        child: Column(children: [
+          GestureDetector(
+            onPanStart: _startCustomDrag, onPanUpdate: _updateCustomDrag, onPanEnd: _endCustomDrag,
+            child: Container(
+              height: 46, padding: const EdgeInsets.symmetric(horizontal: 14),
+              decoration: const BoxDecoration(color: Color(0xFF171321), border: Border(bottom: BorderSide(color: Color(0xFF342641)))),
+              child: Row(children: [
+                const Icon(Icons.drag_indicator_rounded, color: muted, size: 20), const SizedBox(width: 8),
+                const Icon(Icons.bolt_rounded, color: neon, size: 22), const SizedBox(width: 8),
+                const Expanded(child: Text('FELPZ XIT', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, letterSpacing: 0.8))),
+                Icon(Icons.circle, size: 8, color: _status == 'Falha ao enviar estado' ? Colors.redAccent : Colors.greenAccent),
+                const SizedBox(width: 8),
+                IconButton(tooltip: 'Minimizar painel', onPressed: _minimizePanel, icon: const Icon(Icons.remove_rounded, size: 22), visualDensity: VisualDensity.compact),
+              ]),
             ),
-            clipBehavior: Clip.antiAlias,
-            child: Row(children: [
-              Container(
-                width: 92,
-                color: const Color(0xFF111018),
-                child: Column(children: [
-                  const SizedBox(height: 17),
-                  Container(
-                    width: 42, height: 42,
-                    decoration: BoxDecoration(
-                      color: neon.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(13),
-                      border: Border.all(color: neon.withValues(alpha: 0.65)),
-                    ),
-                    child: const Icon(Icons.bolt_rounded, color: neon, size: 27),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text('FELPZ', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.1)),
-                  const SizedBox(height: 22),
-                  _navItem(0, Icons.home_rounded, 'Início'),
-                  _navItem(1, Icons.tune_rounded, 'Controles'),
-                  _navItem(2, Icons.settings_rounded, 'Ajustes'),
-                  const Spacer(),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Icon(Icons.circle, size: 8, color: _status == 'Falha ao enviar estado' ? Colors.redAccent : Colors.greenAccent),
-                  ),
-                ]),
-              ),
-              Expanded(
-                child: Column(children: [
-                  Container(
-                    height: 58,
-                    padding: const EdgeInsets.symmetric(horizontal: 15),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF171321),
-                      border: Border(bottom: BorderSide(color: Color(0xFF342641))),
-                    ),
-                    child: Row(children: [
-                      Expanded(child: Text(
-                        ['Visão geral', 'Controles', 'Configurações'][_page],
-                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-                      )),
-                      IconButton(
-                        tooltip: 'Minimizar painel',
-                        onPressed: _minimizePanel,
-                        icon: const Icon(Icons.remove_rounded, size: 23),
-                      ),
-                    ]),
-                  ),
-                  Expanded(child: IndexedStack(
-                    index: _page,
-                    children: [_homePage(), _controlsPage(), _settingsPage()],
-                  )),
-                ]),
-              ),
-            ]),
           ),
+          SizedBox(height: 48, child: SingleChildScrollView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: Row(children: [
+              _navItem(0, Icons.home_rounded, 'Início'),
+              _navItem(1, Icons.tune_rounded, 'Controles'),
+              _navItem(2, Icons.visibility_rounded, 'ESP'),
+              _navItem(3, Icons.my_location_rounded, 'Aimbot'),
+              _navItem(4, Icons.settings_rounded, 'Ajustes'),
+            ]),
+          )),
+          const Divider(height: 1, color: Color(0xFF342641)),
+          Expanded(child: IndexedStack(index: _page, children: [_homePage(), _controlsPage(), _espPage(), _aimbotPage(), _settingsPage()])),
+        ]),
+      ),
     ),
   );
 }
