@@ -5,7 +5,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_overlay_window_plus/flutter_overlay_window_plus.dart';
+import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:http/http.dart' as http;
 import 'package:shizuku_api_plugin/shizuku_api.dart';
 
@@ -75,7 +75,7 @@ class _SecretScreenState extends State<SecretScreen> {
   @override
   void initState() {
     super.initState();
-    _subscription = FlutterOverlayWindowPlus.overlayListener.listen(
+    _subscription = FlutterOverlayWindow.overlayListener.listen(
       _onOverlayMessage,
       onError: (Object e) => _recordAppLog('Overlay listener: $e'),
     );
@@ -211,10 +211,10 @@ class _SecretScreenState extends State<SecretScreen> {
         _message('Permissão do Shizuku negada.');
         return;
       }
-      if (!await FlutterOverlayWindowPlus.isPermissionGranted()) {
-        await FlutterOverlayWindowPlus.requestPermission();
+      if (!await FlutterOverlayWindow.isPermissionGranted()) {
+        await FlutterOverlayWindow.requestPermission();
       }
-      if (!await FlutterOverlayWindowPlus.isPermissionGranted()) {
+      if (!await FlutterOverlayWindow.isPermissionGranted()) {
         _message('Permita a exibição sobre outros aplicativos.');
         return;
       }
@@ -225,13 +225,15 @@ class _SecretScreenState extends State<SecretScreen> {
       } catch (e) {
         _recordAppLog('Não foi possível iniciar o Free Fire automaticamente: $e');
       }
-      await FlutterOverlayWindowPlus.showOverlay(
+      await FlutterOverlayWindow.showOverlay(
         height: 600,
         width: 420,
         alignment: OverlayAlignment.center,
+        overlayTitle: 'Felpz Xit',
+        overlayContent: 'Painel flutuante ativo',
         enableDrag: true,
         flag: OverlayFlag.defaultFlag,
-        positionGravity: PositionGravity.auto,
+        positionGravity: PositionGravity.none,
       );
       // Não minimizar a Activity: o overlay deve surgir sem minimizar o app.
     } catch (e) {
@@ -331,7 +333,7 @@ class _OverlayPanelState extends State<OverlayPanel> {
 
   Future<void> _send(String name, dynamic value) async {
     try {
-      await FlutterOverlayWindowPlus.shareData(jsonEncode({'name': name, 'value': value}));
+      await FlutterOverlayWindow.shareData(jsonEncode({'name': name, 'value': value}));
       if (mounted) setState(() => _status = 'Estado enviado');
     } catch (e) {
       if (mounted) setState(() => _status = 'Falha ao enviar estado');
@@ -354,7 +356,7 @@ class _OverlayPanelState extends State<OverlayPanel> {
       _lastTwoFingerTap = null;
     });
     try {
-      await FlutterOverlayWindowPlus.resizeOverlay(90, 90);
+      await FlutterOverlayWindow.resizeOverlay(90, 90);
     } catch (e) {
       _recordAppLog('Não foi possível reduzir o painel: $e');
       if (mounted) setState(() => _minimized = false);
@@ -371,7 +373,7 @@ class _OverlayPanelState extends State<OverlayPanel> {
       _expandAfterRelease = false;
     });
     try {
-      await FlutterOverlayWindowPlus.resizeOverlay(420, 600);
+      await FlutterOverlayWindow.resizeOverlay(420, 600);
     } catch (e) {
       _recordAppLog('Não foi possível restaurar o painel: $e');
     }
@@ -380,7 +382,7 @@ class _OverlayPanelState extends State<OverlayPanel> {
   void _onPointerDown(PointerDownEvent event) {
     if (!_minimized) return;
     _activePointers.add(event.pointer);
-    if (_activePointers.length >= 2 && !_gestureCounted) {
+    if (_activePointers.length >= 3 && !_gestureCounted) {
       _gestureCounted = true;
       final now = DateTime.now();
       if (_lastTwoFingerTap == null ||
@@ -572,7 +574,7 @@ class _OverlayPanelState extends State<OverlayPanel> {
 
   Future<void> _closePanel() async {
     try {
-      await FlutterOverlayWindowPlus.closeOverlay();
+      await FlutterOverlayWindow.closeOverlay();
     } catch (e) {
       _recordAppLog('Não foi possível fechar o painel: $e');
       if (mounted) setState(() => _status = 'Falha ao fechar o painel');
