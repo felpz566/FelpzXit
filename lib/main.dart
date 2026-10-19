@@ -1,327 +1,381 @@
+import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/gestures.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_overlay_window_plus/flutter_overlay_window_plus.dart';
 import 'package:http/http.dart' as http;
-import 'package:permission_handler/permission_handler.dart';
 import 'package:shizuku_api_plugin/shizuku_api.dart';
 
-// ⚠️ Entry point do overlay (OBRIGATÓRIO para o flutter_overlay_window_plus 1.0.1+)
-@pragma("vm:entry-point")
+const bg = Color(0xFF0B0B12);
+const panel = Color(0xFF171522);
+const neon = Color(0xFFB36BFF);
+const muted = Color(0xFF9694A8);
+
+void main() => runApp(const FelpzXitApp());
+
+@pragma('vm:entry-point')
 void overlayMain() {
-  runApp(const MaterialApp(
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const MaterialApp(debugShowCheckedModeBanner: false, home: OverlayPanel()));
+}
+
+class FelpzXitApp extends StatelessWidget {
+  const FelpzXitApp({super.key});
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+    title: 'Felpz Xit',
     debugShowCheckedModeBanner: false,
-    home: OverlayPanel(),
-  ));
-}
-
-void main() {
-  runApp(const MyApp());
-}
-
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Felpz Xit',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark().copyWith(scaffoldBackgroundColor: Colors.black),
-      home: const SecretScreen(),
-    );
-  }
-}
-
-class OverlayPanel extends StatelessWidget {
-  const OverlayPanel({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      backgroundColor: Colors.black,
-      body: Center(
-        child: Text(
-          'Felpz Xit',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-    );
-  }
+    theme: ThemeData(
+      brightness: Brightness.dark,
+      scaffoldBackgroundColor: bg,
+      colorScheme: ColorScheme.fromSeed(seedColor: neon, brightness: Brightness.dark),
+      useMaterial3: true,
+    ),
+    home: const SecretScreen(),
+  );
 }
 
 class SecretScreen extends StatefulWidget {
   const SecretScreen({super.key});
-
   @override
   State<SecretScreen> createState() => _SecretScreenState();
 }
 
 class _SecretScreenState extends State<SecretScreen> {
-  final ShizukuApi _shizuku = ShizukuApi();
-  final TextEditingController _keyController = TextEditingController();
-
-  bool _permissionsGranted = false;
-  bool _keyValid = false;
-  bool _isValidating = false;
-
-  // ⚠️ SUBSTITUA pela URL real do seu site
-  static const String _validateUrl = 'https://key-manager-fawn.vercel.app/api/keys/validate';
-  static const String _productName = 'FelpzXit';
-
-  // ---------------------------------------------------------------
-  // 1) Gatilho: 2 toques de 3 dedos
-  // ---------------------------------------------------------------
-  Future<void> _onSecretTriggered() async {
-    if (!await Permission.systemAlertWindow.isGranted) {
-      await Permission.systemAlertWindow.request();
-    }
-
-    final bool? binderRunning = await _shizuku.pingBinder();
-    if (binderRunning != true) {
-      _showMessage('Shizuku não está rodando.');
-      return;
-    }
-
-    final bool? hasPermission = await _shizuku.checkPermission();
-    if (hasPermission != true) {
-      final bool? granted = await _shizuku.requestPermission();
-      if (granted != true) {
-        _showMessage('Permissão do Shizuku negada.');
-        return;
-      }
-    }
-
-    setState(() => _permissionsGranted = true);
-    _showMessage('Permissões concedidas. Insira sua key.');
-  }
-
-  // ---------------------------------------------------------------
-  // 2) Validação da key (CORRIGIDA)
-  // ---------------------------------------------------------------
-  Future<void> _validateKey() async {
-    final key = _keyController.text.trim();
-    if (key.isEmpty) {
-      _showMessage('Digite uma key.');
-      return;
-    }
-
-    setState(() => _isValidating = true);
-
-    try {
-      final response = await http.post(
-        Uri.parse(_validateUrl),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'key': key, 'product': _productName}),
-      );
-
-      // Verifica se é HTML antes de tentar parsear
-      if (response.body.startsWith('<!DOCTYPE') || !response.body.contains('{')) {
-         setState(() => _isValidating = false);
-         _showMessage('Erro no servidor: Resposta não é JSON.\n${response.body.substring(0, 50)}...');
-         return;
-      }
-
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-
-      if (response.statusCode == 200 && data['valid'] == true) {
-        setState(() {
-          _keyValid = true;
-          _isValidating = false;
-        });
-        _openOverlay();
-      } else {
-        final error = data['error'] ?? data['status'] ?? 'invalid_key';
-        String message;
-        switch (error) {
-          case 'expired': message = 'Key expirada.'; break;
-          case 'revoked': message = 'Key revogada.'; break;
-          case 'wrong_product': message = 'Key pertence a outro produto.'; break;
-          default: message = 'Key inválida.';
-        }
-        setState(() => _isValidating = false);
-        _showMessage(message);
-      }
-    } catch (e) {
-      setState(() => _isValidating = false);
-      _showMessage('Erro ao validar: $e');
-    }
-  }
-
-  // ---------------------------------------------------------------
-  // 3) Abrir overlay
-  // ---------------------------------------------------------------
-  Future<void> _openOverlay() async {
-    if (!await FlutterOverlayWindowPlus.isPermissionGranted()) {
-      await FlutterOverlayWindowPlus.requestPermission();
-    }
-
-    await FlutterOverlayWindowPlus.showOverlay(
-      height: 480,
-      width: 360,
-      alignment: OverlayAlignment.center,
-      enableDrag: true,
-      flag: OverlayFlag.defaultFlag,
-      positionGravity: PositionGravity.auto,
-    );
-
-    await FlutterOverlayWindowPlus.minimizeApp();
-  }
-
-  // ---------------------------------------------------------------
-  // 4) Listener: recebe comandos do overlay e executa via Shizuku
-  // ---------------------------------------------------------------
-  void _setupOverlayListener() {
-    FlutterOverlayWindowPlus.overlayListener.listen((data) async {
-      if (data is Map && data['cmd'] != null) {
-        final cmd = data['cmd'];
-        final value = data['value'];
-
-        // Envia comando para o motor .dex via arquivo temporário
-        final json = jsonEncode({'cmd': cmd, 'value': value});
-        final shellCmd = 'echo \'$json\' > /data/local/tmp/felpz_cmd.json';
-
-        try {
-          await _shizuku.runCommand(shellCmd);
-        } catch (e) {
-          debugPrint('Erro ao enviar comando: $e');
-        }
-      }
-
-      // Bypass: limpar logs
-      if (data is Map && data['action'] == 'bypass_clear_logs') {
-        try {
-          await _shizuku.runCommand('logcat -c');
-          await _shizuku.runCommand('rm -rf /sdcard/Android/data/com.dts.freefireth/cache/*');
-        } catch (e) {
-          debugPrint('Erro no bypass: $e');
-        }
-      }
-    });
-  }
-
-  void _showMessage(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-  }
+  static final _endpoint = Uri.parse('https://key-manager-fawn.vercel.app/api/validate');
+  final _key = TextEditingController();
+  final _shizuku = ShizukuApi();
+  StreamSubscription<dynamic>? _subscription;
+  bool _showKey = false, _busy = false;
+  int _taps = 0;
+  DateTime? _lastTap;
 
   @override
   void initState() {
     super.initState();
-    _setupOverlayListener();
+    _subscription = FlutterOverlayWindowPlus.overlayListener.listen(
+      _onOverlayMessage,
+      onError: (Object e) => debugPrint('Overlay listener: $e'),
+    );
   }
 
-  // ---------------------------------------------------------------
-  // 5) Build
-  // ---------------------------------------------------------------
   @override
-  Widget build(BuildContext context) {
-    if (_keyValid) {
-      return const Scaffold(
-        body: Center(
-          child: Text(
-            'Painel aberto. Use Volume + para abrir, Volume - para fechar.',
-            style: TextStyle(color: Colors.white70),
-          ),
-        ),
-      );
-    }
+  void dispose() {
+    _subscription?.cancel();
+    _key.dispose();
+    super.dispose();
+  }
 
-    if (_permissionsGranted) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Ativação')),
-        body: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              TextField(
-                controller: _keyController,
-                decoration: const InputDecoration(
-                  labelText: 'Key',
-                  border: OutlineInputBorder(),
+  // Lista de permissões explícita: nunca executa comandos arbitrários do overlay.
+  Future<void> _onOverlayMessage(dynamic message) async {
+    if (message is! Map) return;
+    final name = message['name'];
+    final value = message['value'];
+    const allowed = {'indicator', 'focusMode', 'viewScale'};
+    if (!allowed.contains(name)) return;
+    if ((name == 'indicator' || name == 'focusMode') && value is! bool) return;
+    if (name == 'viewScale' &&
+        (value is! num || value < 0.5 || value > 1.5)) return;
+    try {
+      final encoded = jsonEncode({name.toString(): value});
+      await _shizuku.runCommand(
+        "printf '%s' '$encoded' > /data/local/tmp/felpz_cmd.json",
+      );
+    } catch (e) {
+      debugPrint('Falha ao enviar estado via Shizuku: $e');
+    }
+  }
+
+  void _tap() {
+    final now = DateTime.now();
+    if (_lastTap == null || now.difference(_lastTap!) > const Duration(milliseconds: 900)) {
+      _taps = 1;
+    } else {
+      _taps++;
+    }
+    _lastTap = now;
+    if (_taps >= 3) {
+      _taps = 0;
+      setState(() => _showKey = true);
+    }
+  }
+
+  Future<void> _validate() async {
+    final key = _key.text.trim();
+    if (key.isEmpty || _busy) {
+      _message('Digite sua key.');
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      final response = await http.post(
+        _endpoint,
+        headers: const {'Content-Type': 'application/json'},
+        body: jsonEncode({'key': key, 'product': 'MultiKit'}),
+      ).timeout(const Duration(seconds: 15));
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        throw const FormatException('Resposta inesperada do servidor.');
+      }
+      if (response.statusCode == 200 && decoded['valid'] == true) {
+        await _openOverlay();
+      } else {
+        final error = decoded['error'] ?? decoded['status'];
+        _message(switch (error) {
+          'expired' => 'Key expirada.',
+          'revoked' => 'Key revogada.',
+          'wrong_product' => 'Key pertence a outro produto.',
+          _ => 'Key inválida.',
+        });
+      }
+    } on TimeoutException {
+      _message('Tempo limite ao validar a key. Tente novamente.');
+    } on FormatException {
+      _message('O servidor retornou uma resposta inválida.');
+    } catch (e) {
+      _message('Falha na validação: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _openOverlay() async {
+    try {
+      if (await _shizuku.pingBinder() != true) {
+        _message('Inicie o Shizuku antes de abrir o painel.');
+        return;
+      }
+      if (await _shizuku.checkPermission() != true &&
+          await _shizuku.requestPermission() != true) {
+        _message('Permissão do Shizuku negada.');
+        return;
+      }
+      if (!await FlutterOverlayWindowPlus.isPermissionGranted()) {
+        await FlutterOverlayWindowPlus.requestPermission();
+      }
+      if (!await FlutterOverlayWindowPlus.isPermissionGranted()) {
+        _message('Permita a exibição sobre outros aplicativos.');
+        return;
+      }
+      await FlutterOverlayWindowPlus.showOverlay(
+        height: 400,
+        width: 300,
+        alignment: OverlayAlignment.center,
+        enableDrag: true,
+        flag: OverlayFlag.defaultFlag,
+        positionGravity: PositionGravity.auto,
+      );
+      // Não minimizar a Activity: o overlay deve surgir sem minimizar o app.
+    } catch (e) {
+      _message('Não foi possível abrir o overlay: $e');
+    }
+  }
+
+  void _message(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  Widget _brand() => Container(
+    width: 62, height: 62,
+    decoration: BoxDecoration(
+      color: neon.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(19),
+      border: Border.all(color: neon),
+    ),
+    child: const Icon(Icons.bolt_rounded, color: neon, size: 35),
+  );
+
+  Widget _secretScreen() => Column(mainAxisSize: MainAxisSize.min, children: [
+    _brand(),
+    const SizedBox(height: 20),
+    const Text('Felpz Xit', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
+    const SizedBox(height: 8),
+    const Text('Toque três vezes rapidamente para continuar.',
+      textAlign: TextAlign.center, style: TextStyle(color: muted)),
+  ]);
+
+  Widget _keyForm() => Container(
+    margin: const EdgeInsets.all(22),
+    padding: const EdgeInsets.all(22),
+    decoration: BoxDecoration(
+      color: panel, borderRadius: BorderRadius.circular(24),
+      border: Border.all(color: neon),
+    ),
+    child: Column(mainAxisSize: MainAxisSize.min, children: [
+      _brand(),
+      const SizedBox(height: 16),
+      const Text('Ativação', style: TextStyle(fontSize: 23, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 8),
+      const Text('Valide sua key do MultiKit.', style: TextStyle(color: muted)),
+      const SizedBox(height: 18),
+      TextField(
+        controller: _key, enabled: !_busy, autocorrect: false, enableSuggestions: false,
+        decoration: const InputDecoration(
+          labelText: 'Key de acesso', border: OutlineInputBorder(),
+          prefixIcon: Icon(Icons.key_rounded),
+        ),
+        onSubmitted: (_) => _validate(),
+      ),
+      const SizedBox(height: 16),
+      SizedBox(width: double.infinity, child: FilledButton(
+        onPressed: _busy ? null : _validate,
+        child: _busy
+          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+          : const Text('Validar key'),
+      )),
+    ]),
+  );
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: SafeArea(child: GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _showKey ? null : _tap,
+      child: Center(child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 220),
+        child: _showKey ? _keyForm() : _secretScreen(),
+      )),
+    )),
+  );
+}
+
+class OverlayPanel extends StatefulWidget {
+  const OverlayPanel({super.key});
+  @override
+  State<OverlayPanel> createState() => _OverlayPanelState();
+}
+
+class _OverlayPanelState extends State<OverlayPanel> {
+  bool _indicator = false, _focus = false, _settings = false;
+  double _scale = 1;
+  String _status = 'Pronto';
+
+  Future<void> _send(String name, dynamic value) async {
+    try {
+      await FlutterOverlayWindowPlus.shareData({'name': name, 'value': value});
+      if (mounted) setState(() => _status = 'Estado enviado');
+    } catch (e) {
+      if (mounted) setState(() => _status = 'Falha ao enviar estado');
+      debugPrint('Erro de comunicação do overlay: $e');
+    }
+  }
+
+  Future<void> _reset() async {
+    setState(() { _indicator = false; _focus = false; _scale = 1; });
+    await _send('indicator', false);
+    await _send('focusMode', false);
+    await _send('viewScale', 1.0);
+    if (mounted) setState(() => _status = 'Controles redefinidos');
+  }
+
+  BoxDecoration get _card => BoxDecoration(
+    color: panel, borderRadius: BorderRadius.circular(14),
+    border: Border.all(color: const Color(0xFF302A3D)),
+  );
+
+  Widget _toggle(IconData icon, String title, String subtitle, bool value, ValueChanged<bool> changed) =>
+    Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: _card,
+      child: Row(children: [
+        Icon(icon, color: neon, size: 21),
+        const SizedBox(width: 9),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+          Text(subtitle, style: const TextStyle(color: muted, fontSize: 10)),
+        ])),
+        Switch.adaptive(value: value, onChanged: changed),
+      ]),
+    );
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: Colors.transparent,
+    child: Container(
+      decoration: BoxDecoration(
+        color: bg, borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: neon, width: 1.4),
+        boxShadow: [BoxShadow(color: neon.withValues(alpha: 0.16), blurRadius: 18)],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(children: [
+        Container(
+          padding: const EdgeInsets.fromLTRB(12, 7, 4, 7),
+          decoration: const BoxDecoration(
+            color: Color(0xFF171321),
+            border: Border(bottom: BorderSide(color: Color(0xFF342641))),
+          ),
+          child: Row(children: [
+            const Icon(Icons.bolt_rounded, color: neon),
+            const SizedBox(width: 6),
+            const Expanded(child: Text('Felpz Xit',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
+            IconButton(
+              tooltip: 'Configurações', visualDensity: VisualDensity.compact,
+              onPressed: () => setState(() => _settings = !_settings),
+              icon: const Icon(Icons.settings_rounded, size: 20),
+            ),
+            IconButton(
+              tooltip: 'Fechar painel', visualDensity: VisualDensity.compact,
+              onPressed: () async {
+                try { await FlutterOverlayWindowPlus.hideOverlay(); }
+                catch (e) { debugPrint('Erro ao fechar overlay: $e'); }
+              },
+              icon: const Icon(Icons.close_rounded, size: 22),
+            ),
+          ]),
+        ),
+        Expanded(child: ListView(
+          padding: const EdgeInsets.all(11),
+          children: [
+            const Text('CONTROLES', style: TextStyle(
+              color: muted, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.4)),
+            const SizedBox(height: 8),
+            _toggle(Icons.radio_button_checked_rounded, 'Indicador visual', 'Alternar indicador', _indicator, (v) {
+              setState(() => _indicator = v); _send('indicator', v);
+            }),
+            const SizedBox(height: 8),
+            _toggle(Icons.center_focus_strong_rounded, 'Modo foco', 'Controle visual de foco', _focus, (v) {
+              setState(() => _focus = v); _send('focusMode', v);
+            }),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(11), decoration: _card,
+              child: Column(children: [
+                Row(children: [
+                  const Icon(Icons.tune_rounded, color: neon, size: 19),
+                  const SizedBox(width: 7),
+                  const Expanded(child: Text('Escala de visualização',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12))),
+                  Text((_scale * 100).round().toString() + '%', style: const TextStyle(color: neon)),
+                ]),
+                Slider(value: _scale, min: 0.5, max: 1.5, divisions: 10, onChanged: (v) {
+                  setState(() => _scale = v); _send('viewScale', v);
+                }),
+              ]),
+            ),
+            if (_settings) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(11), decoration: _card,
+                child: const Text(
+                  'Os controles enviam estados permitidos para /data/local/tmp/felpz_cmd.json via Shizuku.',
+                  style: TextStyle(color: muted, fontSize: 11),
                 ),
               ),
-              const SizedBox(height: 16),
-              _isValidating
-                  ? const CircularProgressIndicator()
-                  : ElevatedButton(
-                      onPressed: _validateKey,
-                      child: const Text('Validar Key'),
-                    ),
             ],
-          ),
-        ),
-      );
-    }
-
-    return Scaffold(
-      body: ThreeFingerTrigger(
-        onTriggered: _onSecretTriggered,
-        child: Container(
-          color: Colors.black,
-          width: double.infinity,
-          height: double.infinity,
-        ),
-      ),
-    );
-  }
-}
-
-// =================================================================
-// Widget do gatilho: 2 toques de 3 dedos simultâneos
-// =================================================================
-class ThreeFingerTrigger extends StatefulWidget {
-  final VoidCallback onTriggered;
-  final Widget child;
-
-  const ThreeFingerTrigger({
-    super.key,
-    required this.onTriggered,
-    required this.child,
-  });
-
-  @override
-  State<ThreeFingerTrigger> createState() => _ThreeFingerTriggerState();
-}
-
-class _ThreeFingerTriggerState extends State<ThreeFingerTrigger> {
-  final Set<int> _activePointers = {};
-  int _taps = 0;
-  DateTime? _lastTapTime;
-
-  static const int _requiredTaps = 2; 
-  static const Duration _resetTimeout = Duration(seconds: 2);
-
-  @override
-  Widget build(BuildContext context) {
-    return Listener(
-      onPointerDown: (event) {
-        _activePointers.add(event.pointer);
-
-        if (_activePointers.length == 3) {
-          final now = DateTime.now();
-
-          if (_lastTapTime != null &&
-              now.difference(_lastTapTime!) > _resetTimeout) {
-            _taps = 0;
-          }
-
-          _lastTapTime = now;
-          _taps++;
-
-          if (_taps >= _requiredTaps) {
-            _taps = 0;
-            widget.onTriggered();
-          }
-        }
-      },
-      onPointerUp: (event) => _activePointers.remove(event.pointer),
-      onPointerCancel: (event) => _activePointers.remove(event.pointer),
-      child: widget.child,
-    );
-  }
+            const SizedBox(height: 10),
+            OutlinedButton.icon(onPressed: _reset,
+              icon: const Icon(Icons.restart_alt_rounded), label: const Text('Redefinir controles')),
+            const SizedBox(height: 5),
+            Text(_status, textAlign: TextAlign.center,
+              style: const TextStyle(color: muted, fontSize: 10)),
+          ],
+        )),
+      ]),
+    ),
+  );
 }
