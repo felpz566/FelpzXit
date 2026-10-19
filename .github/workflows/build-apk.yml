@@ -1,0 +1,55 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    name: Build release APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # This repository currently contains only part of the Android platform
+      # scaffold. Generate the missing Gradle/Flutter wrapper files on the runner
+      # while preserving the project's custom manifest.
+      - name: Generate missing Android platform files
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest="android/app/src/main/AndroidManifest.xml"
+          cp "$manifest" /tmp/FelpzXit-AndroidManifest.xml
+          flutter create --platforms=android --project-name=felpz_xit --org=com.example .
+          cp /tmp/FelpzXit-AndroidManifest.xml "$manifest"
+
+      - name: Resolve Flutter dependencies
+        run: flutter pub get
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: FelpzXit-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 14
