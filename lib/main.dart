@@ -356,7 +356,7 @@ class _OverlayPanelState extends State<OverlayPanel> {
       _lastTwoFingerTap = null;
     });
     try {
-      await FlutterOverlayWindow.resizeOverlay(90.0, 90.0, Alignment.center);
+      await FlutterOverlayWindow.resizeOverlay(90, 90);
     } catch (e) {
       _recordAppLog('Não foi possível reduzir o painel: $e');
       if (mounted) setState(() => _minimized = false);
@@ -373,7 +373,7 @@ class _OverlayPanelState extends State<OverlayPanel> {
       _expandAfterRelease = false;
     });
     try {
-      await FlutterOverlayWindow.resizeOverlay(420.0, 600.0, Alignment.center);
+      await FlutterOverlayWindow.resizeOverlay(420, 600);
     } catch (e) {
       _recordAppLog('Não foi possível restaurar o painel: $e');
     }
