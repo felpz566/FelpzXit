@@ -73,26 +73,20 @@ class _SecretScreenState extends State<SecretScreen> {
   static const String _validateUrl = 'https://SEU-SITE.com/api/keys/validate';
   static const String _productName = 'MultiKit';
 
-  // Pasta de dados do Free Fire
-  final String _ffDataPath = '/storage/emulated/0/Android/data/com.dts.freefireth';
-
   // ---------------------------------------------------------------
   // 1) Gatilho: 2 toques de 3 dedos
   // ---------------------------------------------------------------
   Future<void> _onSecretTriggered() async {
-    // Permissão de sobreposição (necessária para o overlay)
     if (!await Permission.systemAlertWindow.isGranted) {
       await Permission.systemAlertWindow.request();
     }
 
-    // Shizuku rodando?
     final bool? binderRunning = await _shizuku.pingBinder();
     if (binderRunning != true) {
-      _showMessage('Shizuku não está rodando. Instale e inicie o app Shizuku.');
+      _showMessage('Shizuku não está rodando.');
       return;
     }
 
-    // Permissão do Shizuku
     final bool? hasPermission = await _shizuku.checkPermission();
     if (hasPermission != true) {
       final bool? granted = await _shizuku.requestPermission();
@@ -107,7 +101,7 @@ class _SecretScreenState extends State<SecretScreen> {
   }
 
   // ---------------------------------------------------------------
-  // 2) Validação da key
+  // 2) Validação da key (CORRIGIDA)
   // ---------------------------------------------------------------
   Future<void> _validateKey() async {
     final key = _keyController.text.trim();
@@ -125,6 +119,13 @@ class _SecretScreenState extends State<SecretScreen> {
         body: jsonEncode({'key': key, 'product': _productName}),
       );
 
+      // Verifica se é HTML antes de tentar parsear
+      if (response.body.startsWith('<!DOCTYPE') || !response.body.contains('{')) {
+         setState(() => _isValidating = false);
+         _showMessage('Erro no servidor: Resposta não é JSON.\n${response.body.substring(0, 50)}...');
+         return;
+      }
+
       final data = jsonDecode(response.body) as Map<String, dynamic>;
 
       if (response.statusCode == 200 && data['valid'] == true) {
@@ -132,7 +133,6 @@ class _SecretScreenState extends State<SecretScreen> {
           _keyValid = true;
           _isValidating = false;
         });
-        // Abre o overlay automaticamente após validar
         _openOverlay();
       } else {
         final error = data['error'] ?? data['status'] ?? 'invalid_key';
@@ -169,7 +169,6 @@ class _SecretScreenState extends State<SecretScreen> {
       positionGravity: PositionGravity.auto,
     );
 
-    // Minimiza o app principal para o jogo ficar visível
     await FlutterOverlayWindowPlus.minimizeApp();
   }
 
@@ -182,8 +181,7 @@ class _SecretScreenState extends State<SecretScreen> {
         final cmd = data['cmd'];
         final value = data['value'];
 
-        // ⚠️ AQUI você adapta para o caminho real do seu xit.
-        // Exemplo: escrever um JSON que o seu executor Luau lê.
+        // Envia comando para o motor .dex via arquivo temporário
         final json = jsonEncode({'cmd': cmd, 'value': value});
         final shellCmd = 'echo \'$json\' > /data/local/tmp/felpz_cmd.json';
 
@@ -295,7 +293,7 @@ class _ThreeFingerTriggerState extends State<ThreeFingerTrigger> {
   int _taps = 0;
   DateTime? _lastTapTime;
 
-  static const int _requiredTaps = 2; // 👈 2 toques de 3 dedos = 6 cliques
+  static const int _requiredTaps = 2; 
   static const Duration _resetTimeout = Duration(seconds: 2);
 
   @override
