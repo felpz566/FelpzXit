@@ -1,5 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+
+import 'package:path_provider/path_provider.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_overlay_window_plus/flutter_overlay_window_plus.dart';
@@ -10,6 +13,23 @@ const bg = Colors.black;
 const panel = Color(0xFF171522);
 const neon = Color(0xFFB36BFF);
 const muted = Color(0xFF9694A8);
+
+
+Future<File> _appLogFile() async {
+  final directory = await getApplicationSupportDirectory();
+  return File('${directory.path}/felpz_xit.log');
+}
+
+Future<void> _recordAppLog(Object message) async {
+  final line = '${DateTime.now().toIso8601String()} $message\\n';
+  try {
+    final file = await _appLogFile();
+    await file.writeAsString(line, mode: FileMode.append, flush: true);
+  } catch (_) {
+    // A falha no arquivo de log não deve interromper o aplicativo.
+  }
+  debugPrint(message.toString());
+}
 
 void main() => runApp(const FelpzXitApp());
 
@@ -57,7 +77,7 @@ class _SecretScreenState extends State<SecretScreen> {
     super.initState();
     _subscription = FlutterOverlayWindowPlus.overlayListener.listen(
       _onOverlayMessage,
-      onError: (Object e) => debugPrint('Overlay listener: $e'),
+      onError: (Object e) => _recordAppLog('Overlay listener: $e'),
     );
   }
 
@@ -84,7 +104,7 @@ class _SecretScreenState extends State<SecretScreen> {
         "printf '%s' '$encoded' > /data/local/tmp/felpz_cmd.json",
       );
     } catch (e) {
-      debugPrint('Falha ao enviar estado via Shizuku: $e');
+      _recordAppLog('Falha ao enviar estado via Shizuku: $e');
     }
   }
 
@@ -135,20 +155,20 @@ class _SecretScreenState extends State<SecretScreen> {
       try {
         decoded = jsonDecode(response.body);
       } on FormatException {
-        debugPrint('Validação HTTP ${response.statusCode}: resposta não JSON: ${response.body}');
+        _recordAppLog('Validação HTTP ${response.statusCode}: resposta não JSON: ${response.body}');
         _message('Erro no servidor de validação (HTTP ${response.statusCode}).');
         return;
       }
 
       if (decoded is! Map) {
-        debugPrint('Validação HTTP ${response.statusCode}: resposta inesperada: ${response.body}');
+        _recordAppLog('Validação HTTP ${response.statusCode}: resposta inesperada: ${response.body}');
         _message('Resposta inesperada do servidor (HTTP ${response.statusCode}).');
         return;
       }
 
       if (response.statusCode >= 500) {
         final detail = decoded['message'] ?? decoded['error'];
-        debugPrint('Erro do servidor HTTP ${response.statusCode}: $detail');
+        _recordAppLog('Erro do servidor HTTP ${response.statusCode}: $detail');
         _message('Servidor com erro (HTTP ${response.statusCode}). Tente novamente mais tarde.');
         return;
       }
@@ -173,7 +193,7 @@ class _SecretScreenState extends State<SecretScreen> {
     } on TimeoutException {
       _message('Tempo limite ao validar a key. Tente novamente.');
     } catch (e, stack) {
-      debugPrint('Falha na validação: $e\n$stack');
+      _recordAppLog('Falha na validação: $e\n$stack');
       _message('Não foi possível conectar ao servidor de validação.');
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -203,7 +223,7 @@ class _SecretScreenState extends State<SecretScreen> {
         await _shizuku.runCommand('monkey -p com.dts.freefireth 1');
         await Future.delayed(const Duration(milliseconds: 900));
       } catch (e) {
-        debugPrint('Não foi possível iniciar o Free Fire automaticamente: $e');
+        _recordAppLog('Não foi possível iniciar o Free Fire automaticamente: $e');
       }
       await FlutterOverlayWindowPlus.showOverlay(
         height: 600,
@@ -315,7 +335,7 @@ class _OverlayPanelState extends State<OverlayPanel> {
       if (mounted) setState(() => _status = 'Estado enviado');
     } catch (e) {
       if (mounted) setState(() => _status = 'Falha ao enviar estado');
-      debugPrint('Erro de comunicação do overlay: $e');
+      _recordAppLog('Erro de comunicação do overlay: $e');
     }
   }
 
@@ -336,7 +356,7 @@ class _OverlayPanelState extends State<OverlayPanel> {
     try {
       await FlutterOverlayWindowPlus.resizeOverlay(90, 90);
     } catch (e) {
-      debugPrint('Não foi possível reduzir o painel: $e');
+      _recordAppLog('Não foi possível reduzir o painel: $e');
       if (mounted) setState(() => _minimized = false);
     }
   }
@@ -353,7 +373,7 @@ class _OverlayPanelState extends State<OverlayPanel> {
     try {
       await FlutterOverlayWindowPlus.resizeOverlay(420, 600);
     } catch (e) {
-      debugPrint('Não foi possível restaurar o painel: $e');
+      _recordAppLog('Não foi possível restaurar o painel: $e');
     }
   }
 
@@ -516,6 +536,49 @@ class _OverlayPanelState extends State<OverlayPanel> {
     ],
   );
 
+  Future<void> _clearAppLogs() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: panel,
+        title: const Text('Limpar logs do aplicativo?'),
+        content: const Text(
+          'Isso apaga o arquivo de logs privado do Felpz Xit. '
+          'Não apaga registros do Android nem de outros aplicativos.',
+          style: TextStyle(color: muted, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Limpar logs'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      final file = await _appLogFile();
+      if (await file.exists()) await file.delete();
+      if (mounted) setState(() => _status = 'Logs do aplicativo apagados');
+    } catch (e) {
+      _recordAppLog('Falha ao limpar logs internos: $e');
+      if (mounted) setState(() => _status = 'Não foi possível limpar os logs');
+    }
+  }
+
+  Future<void> _closePanel() async {
+    try {
+      await FlutterOverlayWindowPlus.closeOverlay();
+    } catch (e) {
+      _recordAppLog('Não foi possível fechar o painel: $e');
+      if (mounted) setState(() => _status = 'Falha ao fechar o painel');
+    }
+  }
+
   Widget _settingsPage() => ListView(
     padding: const EdgeInsets.all(16),
     children: [
@@ -526,11 +589,55 @@ class _OverlayPanelState extends State<OverlayPanel> {
       const SizedBox(height: 18),
       Container(
         padding: const EdgeInsets.all(14), decoration: _card,
-        child: const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Icon(Icons.gesture_rounded, color: neon),
-          SizedBox(width: 10),
-          Expanded(child: Text('Use o botão de minimizar para recolher o painel. No ícone reduzido, faça dois toques simultâneos com dois dedos para reabrir.',
-            style: TextStyle(color: muted, fontSize: 12, height: 1.4))),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Row(children: [
+            Icon(Icons.cleaning_services_rounded, color: neon),
+            SizedBox(width: 10),
+            Expanded(child: Text('Bypass', style: TextStyle(fontWeight: FontWeight.w700))),
+          ]),
+          const SizedBox(height: 6),
+          const Text(
+            'Apaga somente o arquivo de logs interno do Felpz Xit.',
+            style: TextStyle(color: muted, fontSize: 12, height: 1.4),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _clearAppLogs,
+              icon: const Icon(Icons.delete_sweep_outlined),
+              label: const Text('Limpar logs do aplicativo'),
+            ),
+          ),
+        ]),
+      ),
+      const SizedBox(height: 12),
+      Container(
+        padding: const EdgeInsets.all(14), decoration: _card,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Row(children: [
+            Icon(Icons.close_rounded, color: neon),
+            SizedBox(width: 10),
+            Expanded(child: Text('Fechar painel', style: TextStyle(fontWeight: FontWeight.w700))),
+          ]),
+          const SizedBox(height: 6),
+          const Text(
+            'Encerra o painel flutuante. Para abri-lo novamente, entre no aplicativo e valide sua key.',
+            style: TextStyle(color: muted, fontSize: 12, height: 1.4),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _closePanel,
+              icon: const Icon(Icons.power_settings_new_rounded),
+              label: const Text('Fechar painel'),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF8E3C55),
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ),
         ]),
       ),
       const SizedBox(height: 12),
