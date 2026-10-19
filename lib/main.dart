@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:flutter_overlay_window/src/models/overlay_position.dart';
 import 'package:http/http.dart' as http;
@@ -63,6 +64,7 @@ class SecretScreen extends StatefulWidget {
 }
 
 class _SecretScreenState extends State<SecretScreen> {
+  static const _gestureChannel = MethodChannel('felpz_xit/gesture');
   static final _endpoint = Uri.parse('https://key-manager-fawn.vercel.app/api/keys/validate');
   final _key = TextEditingController();
   final _shizuku = ShizukuApi();
@@ -76,6 +78,14 @@ class _SecretScreenState extends State<SecretScreen> {
   @override
   void initState() {
     super.initState();
+    _gestureChannel.setMethodCallHandler((call) async {
+      if (call.method == 'openOverlay' && mounted) {
+        await _openOverlay(launchGame: false);
+      }
+    });
+    _gestureChannel.invokeMethod<bool>('consumePendingGesture').then((pending) {
+      if (pending == true && mounted) _openOverlay(launchGame: false);
+    }).catchError((Object e) => _recordAppLog('Gesture channel: $e'));
     _subscription = FlutterOverlayWindow.overlayListener.listen(
       _onOverlayMessage,
       onError: (Object e) => _recordAppLog('Overlay listener: $e'),
@@ -176,6 +186,7 @@ class _SecretScreenState extends State<SecretScreen> {
 
       final valid = decoded['valid'] == true || decoded['success'] == true;
       if (response.statusCode >= 200 && response.statusCode < 300 && valid) {
+        await _gestureChannel.invokeMethod<void>('setAuthorized', true);
         await _openOverlay();
         return;
       }
@@ -201,7 +212,7 @@ class _SecretScreenState extends State<SecretScreen> {
     }
   }
 
-  Future<void> _openOverlay() async {
+  Future<void> _openOverlay({bool launchGame = true}) async {
     try {
       if (await _shizuku.pingBinder() != true) {
         _message('Inicie o Shizuku antes de abrir o painel.');
@@ -219,12 +230,14 @@ class _SecretScreenState extends State<SecretScreen> {
         _message('Permita a exibição sobre outros aplicativos.');
         return;
       }
-      // Abre o Free Fire global antes de mostrar o painel por cima do jogo.
-      try {
-        await _shizuku.runCommand('monkey -p com.dts.freefireth 1');
-        await Future.delayed(const Duration(milliseconds: 900));
-      } catch (e) {
-        _recordAppLog('Não foi possível iniciar o Free Fire automaticamente: $e');
+      // Só inicia o jogo no primeiro acesso; o gesto apenas reabre o painel.
+      if (launchGame) {
+        try {
+          await _shizuku.runCommand('monkey -p com.dts.freefireth 1');
+          await Future.delayed(const Duration(milliseconds: 900));
+        } catch (e) {
+          _recordAppLog('Não foi possível iniciar o Free Fire automaticamente: $e');
+        }
       }
       await FlutterOverlayWindow.showOverlay(
         height: 420,
@@ -281,6 +294,12 @@ class _SecretScreenState extends State<SecretScreen> {
       const Text('Ativação', style: TextStyle(fontSize: 23, fontWeight: FontWeight.bold)),
       const SizedBox(height: 8),
       const Text('Valide sua key do FelpzXit.', style: TextStyle(color: muted)),
+      const SizedBox(height: 10),
+      OutlinedButton.icon(
+        onPressed: () => _gestureChannel.invokeMethod<void>('openAccessibilitySettings'),
+        icon: const Icon(Icons.gesture_rounded),
+        label: const Text('Ativar gesto de 3 dedos'),
+      ),
       const SizedBox(height: 18),
       TextField(
         controller: _key, enabled: !_busy, autocorrect: false, enableSuggestions: false,
