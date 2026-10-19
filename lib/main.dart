@@ -47,8 +47,10 @@ class _SecretScreenState extends State<SecretScreen> {
   final _shizuku = ShizukuApi();
   StreamSubscription<dynamic>? _subscription;
   bool _showKey = false, _busy = false;
-  int _taps = 0;
-  DateTime? _lastTap;
+  final Set<int> _activePointers = <int>{};
+  int _multiTapCount = 0;
+  DateTime? _lastMultiTap;
+  bool _currentGestureCounted = false;
 
   @override
   void initState() {
@@ -86,17 +88,28 @@ class _SecretScreenState extends State<SecretScreen> {
     }
   }
 
-  void _tap() {
-    final now = DateTime.now();
-    if (_lastTap == null || now.difference(_lastTap!) > const Duration(milliseconds: 900)) {
-      _taps = 1;
-    } else {
-      _taps++;
+  void _pointerDown(PointerDownEvent event) {
+    _activePointers.add(event.pointer);
+    if (_activePointers.length >= 3 && !_currentGestureCounted) {
+      _currentGestureCounted = true;
+      final now = DateTime.now();
+      if (_lastMultiTap == null ||
+          now.difference(_lastMultiTap!) > const Duration(milliseconds: 1500)) {
+        _multiTapCount = 1;
+      } else {
+        _multiTapCount++;
+      }
+      _lastMultiTap = now;
+      if (_multiTapCount >= 3 && mounted) {
+        setState(() => _showKey = true);
+      }
     }
-    _lastTap = now;
-    if (_taps >= 3) {
-      _taps = 0;
-      setState(() => _showKey = true);
+  }
+
+  void _pointerEnd(PointerEvent event) {
+    _activePointers.remove(event.pointer);
+    if (_activePointers.isEmpty) {
+      _currentGestureCounted = false;
     }
   }
 
@@ -115,7 +128,7 @@ class _SecretScreenState extends State<SecretScreen> {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
-        body: jsonEncode({'key': key, 'product': 'MultiKit'}),
+        body: jsonEncode({'key': key, 'product': 'FelpzXit'}),
       ).timeout(const Duration(seconds: 15));
 
       dynamic decoded;
@@ -237,7 +250,7 @@ class _SecretScreenState extends State<SecretScreen> {
       const SizedBox(height: 16),
       const Text('Ativação', style: TextStyle(fontSize: 23, fontWeight: FontWeight.bold)),
       const SizedBox(height: 8),
-      const Text('Valide sua key do MultiKit.', style: TextStyle(color: muted)),
+      const Text('Valide sua key do FelpzXit.', style: TextStyle(color: muted)),
       const SizedBox(height: 18),
       TextField(
         controller: _key, enabled: !_busy, autocorrect: false, enableSuggestions: false,
@@ -260,9 +273,11 @@ class _SecretScreenState extends State<SecretScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: Colors.black,
-    body: GestureDetector(
+    body: Listener(
       behavior: HitTestBehavior.opaque,
-      onTap: _showKey ? null : _tap,
+      onPointerDown: _showKey ? null : _pointerDown,
+      onPointerUp: _showKey ? null : _pointerEnd,
+      onPointerCancel: _showKey ? null : _pointerEnd,
       child: SizedBox.expand(
         child: _showKey
           ? SafeArea(child: Center(child: _keyForm()))
