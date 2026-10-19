@@ -343,6 +343,7 @@ class OverlayPanel extends StatefulWidget {
 }
 
 class _OverlayPanelState extends State<OverlayPanel> {
+  int _page = 0;
   bool _indicator = false, _focus = false;
   bool _espEnabled = false, _espLine = true, _espBox = true;
   bool _espHealth = true, _espName = true, _espDistance = true;
@@ -483,7 +484,8 @@ class _OverlayPanelState extends State<OverlayPanel> {
       _toggle(Icons.circle_outlined, 'Ativar FOV', 'Mostrar prévia visual do campo de visão', _fovEnabled, (v) => setState(() => _fovEnabled = v)),
       const SizedBox(height: 10),
       Container(padding: const EdgeInsets.all(14), decoration: _card, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [const Icon(Icons.tune_rounded, color: neon, size: 20), const SizedBox(width: 9), const Expanded(child: Text('Tamanho do FOV', style: TextStyle(fontWeight: FontWeight.w600))), Text('${_fovSize.round()}', style: const TextStyle(color: neon, fontWeight: FontWeight.bold))]),
+        Row(children: [const Icon(Icons.tune_rounded, color: neon, size: 20), const SizedBox(width: 9), const Expanded(child: Text('Tamanho do FOV', style: TextStyle(fontWeight: FontWeight.w600)))]),
+        const SizedBox(height: 12),
         Slider(value: _fovSize, min: 30, max: 300, divisions: 27, onChanged: _fovEnabled ? (v) => setState(() => _fovSize = v) : null),
         const SizedBox(height: 8),
         Center(child: SizedBox(width: 150, height: 150, child: Center(child: Container(
