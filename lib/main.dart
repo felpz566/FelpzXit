@@ -267,7 +267,7 @@ class _SecretScreenState extends State<SecretScreen> {
         alignment: OverlayAlignment.center,
         overlayTitle: 'Felpz Xit',
         overlayContent: 'Painel flutuante ativo',
-        enableDrag: true,
+        enableDrag: false,
         flag: OverlayFlag.defaultFlag,
         positionGravity: PositionGravity.none,
       );
