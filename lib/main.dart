@@ -271,14 +271,8 @@ class _SecretScreenState extends State<SecretScreen> {
         flag: OverlayFlag.defaultFlag,
         positionGravity: PositionGravity.none,
       );
-      if (notificationsAllowed) {
-        try {
-          await _shortcutChannel.invokeMethod<void>('showShortcutNotification');
-        } catch (e) {
-          _recordAppLog('Não foi possível publicar o atalho de notificação: $e');
-        }
-      } else {
-        _message('Painel aberto. Para reabri-lo pela notificação, permita as notificações do Felpz Xit.');
+      if (!notificationsAllowed) {
+        _message('Painel aberto. Para usar o gatilho, permita as notificações do Felpz Xit.');
       }
       // Não minimizar a Activity: o overlay deve surgir sem minimizar o app.
     } catch (e) {
@@ -341,6 +335,24 @@ class _SecretScreenState extends State<SecretScreen> {
         child: _busy
           ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
           : const Text('Validar key'),
+      )),
+      const SizedBox(height: 10),
+      SizedBox(width: double.infinity, child: OutlinedButton.icon(
+        onPressed: _busy ? null : () async {
+          try {
+            final configured = await _shortcutChannel.invokeMethod<bool>('configureComboTrigger') ?? false;
+            if (mounted && configured) {
+              _message('Gatilho ativado. Ligue Não Perturbe e rotação automática em até 2 segundos.');
+            } else if (mounted) {
+              _message('Conceda acesso a Não Perturbe nas configurações e volte ao Felpz Xit.');
+            }
+          } on PlatformException catch (e) {
+            _recordAppLog('Falha ao configurar gatilho: $e');
+            _message('Não foi possível configurar o gatilho.');
+          }
+        },
+        icon: const Icon(Icons.notifications_active_outlined),
+        label: const Text('Configurar gatilho de notificação'),
       )),
     ]),
   );
