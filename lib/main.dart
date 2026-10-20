@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:flutter_overlay_window/src/models/overlay_position.dart';
 import 'package:http/http.dart' as http;
@@ -64,6 +66,7 @@ class SecretScreen extends StatefulWidget {
 
 class _SecretScreenState extends State<SecretScreen> {
   static final _endpoint = Uri.parse('https://key-manager-fawn.vercel.app/api/keys/validate');
+  static const _shortcutChannel = MethodChannel('felpz_xit/shortcut');
   final _key = TextEditingController();
   final _shizuku = ShizukuApi();
   StreamSubscription<dynamic>? _subscription;
@@ -76,14 +79,31 @@ class _SecretScreenState extends State<SecretScreen> {
   @override
   void initState() {
     super.initState();
+    _shortcutChannel.setMethodCallHandler(_handleShortcutCommand);
     _subscription = FlutterOverlayWindow.overlayListener.listen(
       _onOverlayMessage,
       onError: (Object e) => _recordAppLog('Overlay listener: $e'),
     );
   }
 
+  Future<dynamic> _handleShortcutCommand(MethodCall call) async {
+    switch (call.method) {
+      case 'openPanel':
+        await _openOverlay(launchGame: false);
+        return true;
+      case 'closePanel':
+        await FlutterOverlayWindow.closeOverlay();
+        return true;
+      case 'disableShortcut':
+        return true;
+      default:
+        throw MissingPluginException('Ação de atalho desconhecida: ${call.method}');
+    }
+  }
+
   @override
   void dispose() {
+    _shortcutChannel.setMethodCallHandler(null);
     _subscription?.cancel();
     _key.dispose();
     super.dispose();
@@ -219,7 +239,20 @@ class _SecretScreenState extends State<SecretScreen> {
         _message('Permita a exibição sobre outros aplicativos.');
         return;
       }
-      // Só inicia o jogo no primeiro acesso; o gesto apenas reabre o painel.
+      // Ask for notification permission before launching the game so the dialog
+      // does not unexpectedly appear over gameplay.
+      var notificationsAllowed = false;
+      try {
+        var notificationStatus = await Permission.notification.status;
+        if (launchGame && !notificationStatus.isGranted) {
+          notificationStatus = await Permission.notification.request();
+        }
+        notificationsAllowed = notificationStatus.isGranted;
+      } catch (e) {
+        _recordAppLog('Não foi possível verificar a permissão de notificação: $e');
+      }
+
+      // Só inicia o jogo no primeiro acesso; atalhos apenas reabrem o painel.
       if (launchGame) {
         try {
           await _shizuku.runCommand('monkey -p com.dts.freefireth 1');
@@ -238,6 +271,15 @@ class _SecretScreenState extends State<SecretScreen> {
         flag: OverlayFlag.defaultFlag,
         positionGravity: PositionGravity.none,
       );
+      if (notificationsAllowed) {
+        try {
+          await _shortcutChannel.invokeMethod<void>('showShortcutNotification');
+        } catch (e) {
+          _recordAppLog('Não foi possível publicar o atalho de notificação: $e');
+        }
+      } else {
+        _message('Painel aberto. Para reabri-lo pela notificação, permita as notificações do Felpz Xit.');
+      }
       // Não minimizar a Activity: o overlay deve surgir sem minimizar o app.
     } catch (e) {
       _message('Não foi possível abrir o overlay: $e');
