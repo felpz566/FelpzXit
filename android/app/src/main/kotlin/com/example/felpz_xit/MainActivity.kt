@@ -91,10 +91,11 @@ class MainActivity : FlutterActivity() {
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         wasDndEnabled = isDndEnabled(manager)
         wasAutoRotateEnabled = isAutoRotateEnabled()
-        // Only count actual setting transitions after monitoring starts; merely
-        // opening the app with both options already enabled must not trigger it.
-        dndEnabledAt = 0L
-        autoRotateEnabledAt = 0L
+        // An option already enabled can count as the first half, but we do not
+        // trigger just because both options were already enabled at startup.
+        val initialNow = SystemClock.elapsedRealtime()
+        dndEnabledAt = if (wasDndEnabled) initialNow else 0L
+        autoRotateEnabledAt = if (wasAutoRotateEnabled) initialNow else 0L
         comboNotificationShown = false
         if (!wasDndEnabled || !wasAutoRotateEnabled) {
             PanelShortcutNotification.hide(this)
@@ -133,7 +134,6 @@ class MainActivity : FlutterActivity() {
             false,
             rotationObserver!!
         )
-        evaluateCombo()
     }
 
     private fun stopComboMonitoring() {
