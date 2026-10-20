@@ -5,7 +5,6 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:flutter_overlay_window/src/models/overlay_position.dart';
 import 'package:http/http.dart' as http;
@@ -64,7 +63,6 @@ class SecretScreen extends StatefulWidget {
 }
 
 class _SecretScreenState extends State<SecretScreen> {
-  static const _gestureChannel = MethodChannel('felpz_xit/gesture');
   static final _endpoint = Uri.parse('https://key-manager-fawn.vercel.app/api/keys/validate');
   final _key = TextEditingController();
   final _shizuku = ShizukuApi();
@@ -78,14 +76,6 @@ class _SecretScreenState extends State<SecretScreen> {
   @override
   void initState() {
     super.initState();
-    _gestureChannel.setMethodCallHandler((call) async {
-      if (call.method == 'openOverlay' && mounted) {
-        await _openOverlay(launchGame: false);
-      }
-    });
-    _gestureChannel.invokeMethod<bool>('consumePendingGesture').then((pending) {
-      if (pending == true && mounted) _openOverlay(launchGame: false);
-    }).catchError((Object e) => _recordAppLog('Gesture channel: $e'));
     _subscription = FlutterOverlayWindow.overlayListener.listen(
       _onOverlayMessage,
       onError: (Object e) => _recordAppLog('Overlay listener: $e'),
@@ -186,7 +176,6 @@ class _SecretScreenState extends State<SecretScreen> {
 
       final valid = decoded['valid'] == true || decoded['success'] == true;
       if (response.statusCode >= 200 && response.statusCode < 300 && valid) {
-        await _gestureChannel.invokeMethod<void>('setAuthorized', true);
         await _openOverlay();
         return;
       }
@@ -295,11 +284,6 @@ class _SecretScreenState extends State<SecretScreen> {
       const SizedBox(height: 8),
       const Text('Valide sua key do FelpzXit.', style: TextStyle(color: muted)),
       const SizedBox(height: 10),
-      OutlinedButton.icon(
-        onPressed: () => _gestureChannel.invokeMethod<void>('openAccessibilitySettings'),
-        icon: const Icon(Icons.gesture_rounded),
-        label: const Text('Ativar gesto de 3 dedos'),
-      ),
       const SizedBox(height: 18),
       TextField(
         controller: _key, enabled: !_busy, autocorrect: false, enableSuggestions: false,
