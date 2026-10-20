@@ -11,6 +11,7 @@ import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:flutter_overlay_window/src/models/overlay_position.dart';
 import 'package:http/http.dart' as http;
 import 'package:shizuku_api_plugin/shizuku_api.dart';
+import 'esp_demo_preview.dart';
 
 const bg = Colors.black;
 const panel = Color(0xFF171522);
@@ -494,6 +495,15 @@ class _OverlayPanelState extends State<OverlayPanel> {
       const SizedBox(height: 5),
       const Text('Preferências visuais do painel. Estas opções ainda não estão ligadas ao jogo.', style: TextStyle(color: muted, fontSize: 12)),
       const SizedBox(height: 16),
+      EspDemoPreview(
+        enabled: _espEnabled,
+        showLine: _espLine,
+        showBox: _espBox,
+        showHealth: _espHealth,
+        showName: _espName,
+        showDistance: _espDistance,
+      ),
+      const SizedBox(height: 12),
       _toggle(Icons.visibility_rounded, 'Ativar ESP', 'Ativa as opções visuais abaixo', _espEnabled, (v) => setState(() => _espEnabled = v)),
       const SizedBox(height: 10),
       Opacity(opacity: _espEnabled ? 1 : 0.48, child: IgnorePointer(ignoring: !_espEnabled, child: Column(children: [
