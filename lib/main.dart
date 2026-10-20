@@ -73,9 +73,10 @@ class _SecretScreenState extends State<SecretScreen> {
   StreamSubscription<dynamic>? _subscription;
   bool _showKey = false, _busy = false;
   final Set<int> _activePointers = <int>{};
-  int _multiTapCount = 0;
-  DateTime? _lastMultiTap;
-  bool _currentGestureCounted = false;
+  int _gestureMaxPointers = 0;
+  int _oneFingerTaps = 0;
+  int _twoFingerTaps = 0;
+  DateTime? _sequenceStartedAt;
 
   @override
   void initState() {
@@ -131,27 +132,70 @@ class _SecretScreenState extends State<SecretScreen> {
   }
 
   void _pointerDown(PointerDownEvent event) {
+    if (_activePointers.isEmpty) {
+      _gestureMaxPointers = 0;
+    }
     _activePointers.add(event.pointer);
-    if (_activePointers.length >= 3 && !_currentGestureCounted) {
-      _currentGestureCounted = true;
-      final now = DateTime.now();
-      if (_lastMultiTap == null ||
-          now.difference(_lastMultiTap!) > const Duration(milliseconds: 1500)) {
-        _multiTapCount = 1;
-      } else {
-        _multiTapCount++;
-      }
-      _lastMultiTap = now;
-      if (_multiTapCount >= 3 && mounted) {
-        setState(() => _showKey = true);
-      }
+    if (_activePointers.length > _gestureMaxPointers) {
+      _gestureMaxPointers = _activePointers.length;
     }
   }
 
   void _pointerEnd(PointerEvent event) {
     _activePointers.remove(event.pointer);
+    if (_activePointers.isNotEmpty) return;
+
+    final fingers = _gestureMaxPointers;
+    _gestureMaxPointers = 0;
+    if (fingers < 1 || fingers > 3 || _showKey) return;
+
+    final now = DateTime.now();
+    final startedAt = _sequenceStartedAt;
+    if (startedAt == null ||
+        now.difference(startedAt) > const Duration(seconds: 5)) {
+      _oneFingerTaps = 0;
+      _twoFingerTaps = 0;
+      _sequenceStartedAt = now;
+    }
+
+    // One three-finger tap opens the key screen immediately.
+    if (fingers >= 3) {
+      _oneFingerTaps = 0;
+      _twoFingerTaps = 0;
+      _sequenceStartedAt = null;
+      if (mounted) setState(() => _showKey = true);
+      return;
+    }
+
+    if (fingers == 1) {
+      _oneFingerTaps++;
+      _twoFingerTaps = 0;
+      if (_oneFingerTaps >= 3) {
+        _oneFingerTaps = 0;
+        _sequenceStartedAt = null;
+        if (mounted) setState(() => _showKey = true);
+      }
+      return;
+    }
+
+    if (fingers == 2) {
+      _twoFingerTaps++;
+      _oneFingerTaps = 0;
+      if (_twoFingerTaps >= 2) {
+        _twoFingerTaps = 0;
+        _sequenceStartedAt = null;
+        if (mounted) setState(() => _showKey = true);
+      }
+    }
+  }
+
+  void _pointerCancel(PointerEvent event) {
+    _activePointers.remove(event.pointer);
     if (_activePointers.isEmpty) {
-      _currentGestureCounted = false;
+      _gestureMaxPointers = 0;
+      _oneFingerTaps = 0;
+      _twoFingerTaps = 0;
+      _sequenceStartedAt = null;
     }
   }
 
@@ -365,7 +409,7 @@ class _SecretScreenState extends State<SecretScreen> {
       behavior: HitTestBehavior.opaque,
       onPointerDown: _showKey ? null : _pointerDown,
       onPointerUp: _showKey ? null : _pointerEnd,
-      onPointerCancel: _showKey ? null : _pointerEnd,
+      onPointerCancel: _showKey ? null : _pointerCancel,
       child: SizedBox.expand(
         child: _showKey
           ? SafeArea(child: Center(child: _keyForm()))
