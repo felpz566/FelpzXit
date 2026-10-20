@@ -9,10 +9,24 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        shortcutChannel = MethodChannel(
+        val channel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             SHORTCUT_CHANNEL
         )
+        shortcutChannel = channel
+        channel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "showShortcutNotification" -> {
+                    PanelShortcutNotification.show(this)
+                    result.success(true)
+                }
+                "hideShortcutNotification" -> {
+                    PanelShortcutNotification.hide(this)
+                    result.success(true)
+                }
+                else -> result.notImplemented()
+            }
+        }
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
